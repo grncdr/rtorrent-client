@@ -9,48 +9,38 @@ from wx.lib import scrolledpanel as sp
 import callbackeventcatcher as cbec
 from multiqueue import MultiQueue
 from rtdaemon import RTDaemon
+from controls import *
 from Queue import Queue
 from xmlrpclib import ServerProxy
-#import cProfile
 
-app = wx.App()
-
-class MainWindow(wx.Frame):
+class wrtc(wx.App):
     Settings = { "URL": "http://localhost:5000/RPC2", "REMOTE_BROWSE_URL": " ", "REMOTE_BROWSE_ENABLE": False }
     if os.name == 'nt':
         ConfigPath = os.path.expanduser("~\AppData\Local\wrtc.rc")
     else:
         ConfigPath = os.path.expanduser("~/.config/wrtc.rc")
-    Icons = {}
-    Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
-    Icons['pause'] = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR)
-    Icons['add'] = wx.ArtProvider.GetBitmap(wx.ART_NEW, wx.ART_TOOLBAR)
-    Icons['remove'] = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_FRAME_ICON)
-    ControlIcons = (Icons['play'], Icons['pause'])
     Proxy = None
-    def __init__(self, parent, id, title):
-        wx.Frame.__init__(self, parent, id, title, size=(600,600))
-        MainWindow.LoadSettings()
-        MainWindow.Proxy = ServerProxy(self.Settings["URL"])
-        self.daemon_thread = RTDaemon(TorrentsNotebook.jobs, MainWindow.Proxy)
-        self.daemon_thread.start()
-        self.refresher_thread = UpdateScheduler()
-        ToolBar = wx.BoxSizer(wx.HORIZONTAL)
-        AddTorrentButton = wx.Button(self,label="Add a torrent")
-        AddTorrentButton.Bind(wx.EVT_BUTTON, self.OnAddTorrent)
-        ToolBar.Add(AddTorrentButton, 0, wx.RIGHT, 5)
-        SettingsButton = wx.Button(self,label="Change settings")
-        SettingsButton.Bind(wx.EVT_BUTTON, self.OnSettings)
-        ToolBar.Add(SettingsButton, 0, wx.RIGHT, 5)
+    Icons = {}
+    Title = "wrTc - wxPython rTorrent client"
 
-        global NB
-        NB = TorrentsNotebook(self)
-        MainSizer = wx.BoxSizer(wx.VERTICAL)
-        MainSizer.Add(ToolBar, 0, wx.TOP | wx.BOTTOM, 5)
-        MainSizer.Add(NB, 1, wx.EXPAND)
-        self.SetSizer(MainSizer)
-        self.Show()
-        self.refresher_thread.start()
+    def OnInit(self):
+        print( sys.argv[1:] )
+        frame = MainWindow( None, wx.ID_ANY, wrtc.Title )
+        self.SetTopWindow(frame)
+        wrtc.LoadIcons()
+        wrtc.LoadSettings()
+        wrtc.Proxy = ServerProxy(self.Settings["URL"])
+        self.daemon_thread = RTDaemon(RemoteUpdate.jobs, wrtc.Proxy)
+        self.daemon_thread.start()
+        return True
+
+    @classmethod
+    def LoadIcons(cls):
+        cls.Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
+        cls.Icons['pause'] = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR)
+        cls.Icons['add'] = wx.ArtProvider.GetBitmap(wx.ART_NEW, wx.ART_TOOLBAR)
+        cls.Icons['remove'] = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_FRAME_ICON)
+        cls.ControlIcons = (wrtc.Icons['play'], wrtc.Icons['pause'])
 
     @classmethod
     def LoadSettings(cls):
@@ -65,22 +55,45 @@ class MainWindow(wx.Frame):
     def SaveSettings(cls):
         try:
             config_file = open(cls.ConfigPath, "w+")
-            pickle.dump(MainWindow.Settings,config_file)
+            pickle.dump(wrtc.Settings,config_file)
             config_file.close()
         except:
             print "Could not save settings file:", cls.ConfigPath
 
     @classmethod
-    def OnSettings(self,e=None):
+    def Settings(cls,e=None):
         dlg = SettingsDialog()
         if dlg.ShowModal() == wx.ID_OK:
             for k, v in dlg.settings.iteritems():
-                self.Settings[k] = v['ctrl'].GetValue()
-            MainWindow.SaveSettings()
+                cls.Settings[k] = v['ctrl'].GetValue()
+            wrtc.SaveSettings()
         dlg.Destroy()
 
+class MainWindow(wx.Frame):
+    def __init__(self, parent, id, title):
+        wx.Frame.__init__(self, parent, id, title, size=(600,600))
+        self.refresher_thread = UpdateScheduler()
+        ToolBar = wx.BoxSizer(wx.HORIZONTAL)
+        AddTorrentButton = wx.Button(self,label="Add a torrent")
+        AddTorrentButton.Bind(wx.EVT_BUTTON, self.OnAddTorrent)
+        ToolBar.Add(AddTorrentButton, 0, wx.RIGHT, 5)
+        SettingsButton = wx.Button(self,label="Change settings")
+        time.sleep(10)
+#        SettingsButton.Bind(wx.EVT_BUTTON, wrtc.OnSettings)
+      #    ToolBar.Add(SettingsButton, 0, wx.RIGHT, 5)
+
+        global NB
+        NB = TorrentsNotebook(self)
+        MainSizer = wx.BoxSizer(wx.VERTICAL)
+        MainSizer.Add(ToolBar, 0, wx.TOP | wx.BOTTOM, 5)
+        MainSizer.Add(NB, 1, wx.EXPAND)
+        self.SetSizer(MainSizer)
+        self.Show()
+        self.refresher_thread.start()
+
+
     def OnAbout(self,e):
-        d = wx.MessageDialog( self, "wxPython\nr\nTorrent\nclient", "About "+APP_TITLE, wx.OK)
+        d = wx.MessageDialog( self, "wxPython\nr\nTorrent\nclient", "About "+wrtc.Title, wx.OK)
         d.ShowModal()
         d.Destroy()
 
@@ -96,10 +109,6 @@ class MainWindow(wx.Frame):
             elif dlg.url.GetValue():
                 LoadUrl(dlg.url.GetValue())
         dlg.Destroy()
-
-
-    def MacOpenFile(self, filename):
-        LoadFile(self, filename)
 
     def LoadFile(self, filename, start=False):
         action = "load_raw"
@@ -117,8 +126,6 @@ class MainWindow(wx.Frame):
 
 
 class TorrentsNotebook(wx.Notebook):
-    JobCounter = MultiQueue()
-    jobs = Queue()
     def __init__(self, *args, **kwargs):
         wx.Notebook.__init__(self, *args, **kwargs)
         self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.OnPageChange)
@@ -147,8 +154,8 @@ class ViewPanel(sp.ScrolledPanel):
 
     def AddToView(self, hashlist):
         for infohash in hashlist:
-            if infohash not in TorrentsNotebook.JobCounter:
-                TorrentsNotebook.JobCounter.changecount(infohash)
+            if infohash not in RemoteUpdate.JobCounter:
+                RemoteUpdate.JobCounter.changecount(infohash)
             self.torrents[infohash] = TorrentPanel(self, infohash)
             self.GetSizer().Add(self.torrents[infohash], 0, wx.TOP | wx.BOTTOM | wx.EXPAND, 3)
         self.SetupScrolling()
@@ -172,7 +179,7 @@ class ViewPanel(sp.ScrolledPanel):
             child.Update()
       
     def Synchronize(self):
-        TorrentsNotebook.jobs.put(("download_list",self.title, GUI_UPDATER, cbec.CallbackEvent(method=getattr(self, "UpdateList"))))
+        RemoteUpdate.jobs.put(("download_list",self.title, GUI_UPDATER, cbec.CallbackEvent(method=getattr(self, "UpdateList"))))
 
     def UpdateList(self, new_hashlist):
         current_hashlist = self.torrents.keys()
@@ -186,7 +193,7 @@ class ViewPanel(sp.ScrolledPanel):
             self.GetSizer().Layout()
 
 class TorrentPanel(wx.Panel):
-    def __init__(self, parent, infohash):
+    def __init__(self, parent, infohash, cbHandler, job_queue, job_counter):
         wx.Panel.__init__(self, parent, style=wx.RAISED_BORDER)
         self.infohash = infohash
         TopSizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -202,13 +209,13 @@ class TorrentPanel(wx.Panel):
         RnPSizer.Add(self.UpRateLabel, 0, wx.ALIGN_CENTER | wx.LEFT, 3)
         RnPSizer.Add(self.DownRateLabel, 0, wx.ALIGN_CENTER)
         self.TitleLabel = RemoteLabel(self, self.infohash, "d.get_base_filename", "Loading Torrent Info...")
-        self.EraseButton = wx.BitmapButton(self, wx.ID_ANY, MainWindow.Icons['remove'])
+        self.EraseButton = wx.BitmapButton(self, wx.ID_ANY, wrtc.Icons['remove'])
         self.EraseButton.Bind(wx.EVT_BUTTON, self.OnErase)
         LnTSizer.Add(self.TitleLabel, 1, wx.EXPAND | wx.CENTRE | wx.TOP | wx.BOTTOM, 3)
         LnTSizer.Add(self.EraseButton, 0, wx.ALIGN_RIGHT | wx.ALL, 2)
         InfoSizer.Add(LnTSizer, 0, wx.EXPAND)
         InfoSizer.Add(RnPSizer, 0, wx.EXPAND)
-        self.PlayPause = StateButton(self, self.infohash, MainWindow.Icons['pause'])
+        self.PlayPause = StateButton(self, self.infohash, wrtc.Icons['pause'])
         TopSizer.Prepend(self.PlayPause, 0, wx.ALIGN_CENTER | wx.ALL, 2)
         self.Update()
 
@@ -231,125 +238,19 @@ class TorrentPanel(wx.Panel):
         return False
 
     def Start(self):
-        TorrentsNotebook.jobs.put(("d.start",self.infohash))
+        RemoteUpdate.jobs.put(("d.start",self.infohash))
 
     def Stop(self):
-        TorrentsNotebook.jobs.put(("d.stop",self.infohash))
+        RemoteUpdate.jobs.put(("d.stop",self.infohash))
 
     def OnErase(self, e):
         dlg = wx.MessageDialog(self, "Are you sure you want to remove this torrent?", "Delete torrent", wx.OK | wx.CANCEL | wx.ICON_QUESTION)
         if dlg.ShowModal() == wx.ID_OK:
-            TorrentsNotebook.jobs.put(("d.erase",self.infohash))
+            RemoteUpdate.jobs.put(("d.erase",self.infohash))
             sizer = self.GetParent().GetSizer()
             self.Destroy()
             sizer.Layout()
         dlg.Destroy()
-
-
-class RemoteUpdate:
-    def __init__(self, attributes):
-        self.CbHandler = GUI_UPDATER
-        self.attributes = attributes
-        self.waiting = False
-        self.skip = False
-
-    def UpdateSelf(self, attribute):
-        a = self.attributes[attribute]
-        if self.IsVisible() and not self.waiting and not self.skip:
-            self.waiting = True
-            TorrentsNotebook.jobs.put((a["command"],a["parameter"], self.CbHandler, cbec.CallbackEvent(method=getattr(self, a["callback"]))))
-            TorrentsNotebook.JobCounter.inc(a["parameter"])
-
-    def IsVisible(self):
-        view = self.GetGrandParent()
-        if view == NB.GetCurrentPage():
-            panel = self.GetParent()
-            rect = self.GetRect()
-            
-            scrollpos = [view.GetScrollPos(wx.HORIZONTAL), view.GetScrollPos(wx.VERTICAL)]
-            ppu = view.GetScrollPixelsPerUnit()
-            scrollpos[0] *= ppu[0]
-            scrollpos[1] *= ppu[1]
-            rect.Offset((scrollpos[0], scrollpos[1]))
-            rect.Offset(view.GetPosition())
-            rect.Offset(panel.GetPosition())
-            if view.GetRect().Intersects(rect):
-                return True
-        return False
-
-class RemoteProgressBar(wx.Gauge, RemoteUpdate):
-    def __init__(self, parent, infohash):
-        wx.Gauge.__init__(self, parent, wx.ID_ANY, 0)
-        attributes = {
-            "range": {
-                "command": "d.get_size_bytes", 
-                "parameter": infohash, 
-                "callback": "SetRange" },
-            "value": {
-                "command": "d.get_bytes_done",
-                "parameter": infohash,
-                "callback": "SetValue",
-            }
-        }
-        self.infohash = infohash
-        RemoteUpdate.__init__(self, attributes)
-
-    def SetValue(self, pos):
-        wx.Gauge.__init__(self, pos)
-        if pos == self.GetRange():
-            self.skip = True
-
-    def SetValue(self, pos):
-        wx.Gauge.SetValue(self, pos)
-        if pos == self.GetRange():
-            self.skip = True
-
-
-class RemoteLabel(wx.StaticText, RemoteUpdate):
-    def __init__(self, parent, infohash, command, default, format_string="%s", transformer=lambda s:str(s), dynamic=False):
-        wx.StaticText.__init__(self, parent, wx.ID_ANY, format_string % transformer(default))
-        self.infohash = infohash
-        self.command = command
-        self.format_string = format_string
-        self.transformer = transformer
-        self.dynamic = dynamic
-        attributes = {"label": {
-            "command": command, 
-            "parameter": infohash, 
-            "callback": "SetLabel" }}
-        RemoteUpdate.__init__(self, attributes)
-
-    def SetLabel(self, value=None):
-        wx.StaticText.SetLabel(self, self.format_string % self.transformer(value))
-        if not self.dynamic:
-            self.skip = True
-
-class StateButton(wx.BitmapButton, RemoteUpdate):
-    def __init__(self, parent, infohash, bitmap):
-        wx.BitmapButton.__init__(self, parent, wx.ID_ANY, bitmap)
-        self.Bind(wx.EVT_BUTTON, self.OnClick)
-        self.infohash = infohash
-        attributes = {
-            "bitmap": {
-                "command": "d.get_state", 
-                "parameter": infohash, 
-                "callback": "SetBitmap" 
-            }
-        }
-        RemoteUpdate.__init__(self,  attributes)
-
-    def SetBitmap(self, value):
-        self.SetBitmapLabel(MainWindow.ControlIcons[value])
-        self.Enable()
-
-    def OnClick(self, event):
-        self.Disable()
-        if self.GetBitmapLabel() == MainWindow.ControlIcons[0]:
-            self.GetParent().Start()
-            self.UpdateSelf("bitmap")
-        elif self.GetBitmapLabel() == MainWindow.ControlIcons[1]:
-            self.GetParent().Stop()
-            self.UpdateSelf("bitmap")
 
 class UpdateScheduler(threading.Thread):
     def __init__(self):
@@ -368,7 +269,7 @@ class LoadTorrentDialog(wx.Dialog):
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.SetSizer(sizer)
         padding = 3
-
+  
         file_sizer = wx.BoxSizer(wx.HORIZONTAL)
         filepath_label = wx.StaticText(self, label="From file:")
         self.filepath = wx.TextCtrl(self)
@@ -385,10 +286,10 @@ class LoadTorrentDialog(wx.Dialog):
         destpath_label = wx.StaticText(self, label="Save in:")
         self.destpath = wx.TextCtrl(self)
         dest_sizer.AddMany([(destpath_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, padding), (self.destpath, 1, wx.EXPAND | wx.ALL, padding)])
-        if MainWindow.Settings["REMOTE_BROWSE_ENABLE"]:
+        if wrtc.Settings["REMOTE_BROWSE_ENABLE"]:
             dest_browse_button = wx.Button(self, 99, "Browse...")
             dest_sizer.Add(dest_browse_button, 0, wx.ALL, padding)
-                
+              
         start_sizer = wx.BoxSizer(wx.HORIZONTAL)
         start_label = wx.StaticText(self, label="Start on load")
         self.start_immediate = wx.CheckBox(self)
@@ -419,7 +320,7 @@ class SettingsDialog(wx.Dialog):
         self.SetSizer(sizer)
         padding = 3
         settings = {}
-        for k, v in MainWindow.Settings.iteritems():
+        for k, v in wrtc.Settings.iteritems():
             settings[k] = {}
             stype = type(v)
             if stype == type(False):
@@ -444,12 +345,14 @@ class SettingsDialog(wx.Dialog):
 
 def InitQueues():
     try:
-        TorrentsNotebook.jobs.mutex.acquire()
-        TorrentsNotebook.jobs.queue.clear()
-        TorrentsNotebook.jobs.mutex.release()
+        RemoteUpdate.jobs.mutex.acquire()
+        RemoteUpdate.jobs.queue.clear()
+        RemoteUpdate.jobs.mutex.release()
     except:
+				print("Ah fuck")
+				time.sleep(10)
         quit()
-    TorrentsNotebook.JobCounter.__init__()
+    RemoteUpdate.JobCounter.__init__()
 
 def FormatBytes(bytes, characters=5):
     output = unit = ""
@@ -463,7 +366,7 @@ def FormatBytes(bytes, characters=5):
     number = str(int(bytes)).rjust(4)
     return number + unit
 
-APP_TITLE = "wrTc v0.1a"
-GUI_UPDATER = cbec.CallbackEventCatcher("infohash",getattr(TorrentsNotebook.JobCounter, 'dec'))
-frame = MainWindow(None, wx.ID_ANY, APP_TITLE)
+GUI_UPDATER = cbec.CallbackEventCatcher("infohash",getattr(RemoteUpdate.JobCounter, 'dec'))
+
+app = wrtc()
 app.MainLoop()
