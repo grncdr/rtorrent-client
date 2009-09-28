@@ -7,11 +7,9 @@ This is a little app that connects to and monitors a remote rTorrent via xmlrpc,
 import os, sys, threading, time, wx, pickle
 from wx.lib import scrolledpanel as sp
 import callbackeventcatcher as cbec
-from multiqueue import MultiQueue
 from rtdaemon import RTDaemon
 from controls import *
-from Queue import Queue
-from xmlrpclib import ServerProxy
+from xmlrpclib import ServerProxy, Binary
 
 class wrtc(wx.App):
     Settings = { "URL": "http://localhost:5000/RPC2", "REMOTE_BROWSE_URL": " ", "REMOTE_BROWSE_ENABLE": False }
@@ -24,14 +22,16 @@ class wrtc(wx.App):
     Title = "wrTc - wxPython rTorrent client"
 
     def OnInit(self):
-        print( sys.argv[1:] )
-        frame = MainWindow( None, wx.ID_ANY, wrtc.Title )
-        self.SetTopWindow(frame)
         wrtc.LoadIcons()
         wrtc.LoadSettings()
+
+        frame = MainWindow( None, wx.ID_ANY, wrtc.Title )
+        self.SetTopWindow(frame)
         wrtc.Proxy = ServerProxy(self.Settings["URL"])
-        self.daemon_thread = RTDaemon(RemoteUpdate.jobs, wrtc.Proxy)
+        self.daemon_thread = RTDaemon(RemoteUpdate.Jobs, wrtc.Proxy)
         self.daemon_thread.start()
+        if sys.argv[1]:
+            wrtc.AddTorrent(None, sys.argv[1])
         return True
 
     @classmethod
@@ -49,7 +49,7 @@ class wrtc(wx.App):
             cls.Settings.update(pickle.load(config_file))
             config_file.close()
         except IOError, EOFError:
-            cls.OnSettings()
+            NB.ChangeSelection(NB.GetPageCount()-1)
 
     @classmethod
     def SaveSettings(cls):
@@ -57,30 +57,48 @@ class wrtc(wx.App):
             config_file = open(cls.ConfigPath, "w+")
             pickle.dump(wrtc.Settings,config_file)
             config_file.close()
+            print "Saved settings file", cls.ConfigPath
         except:
             print "Could not save settings file:", cls.ConfigPath
 
     @classmethod
-    def Settings(cls,e=None):
-        dlg = SettingsDialog()
+    def AddTorrent(self,e=None,filename=None):
+        dlg = LoadTorrentDialog()
+        if filename:
+            dlg.filepath.SetValue(filename)
         if dlg.ShowModal() == wx.ID_OK:
-            for k, v in dlg.settings.iteritems():
-                cls.Settings[k] = v['ctrl'].GetValue()
-            wrtc.SaveSettings()
+            if dlg.filepath.GetValue():
+                self.SendTorrentFile(dlg.filepath.GetValue())
+            elif dlg.url.GetValue():
+                self.SendTorrentUrl(dlg.url.GetValue())
         dlg.Destroy()
+
+    @classmethod
+    def SendTorrentFile(self, filename, start=False):
+        action = "load_raw"
+        if start:
+            action += "_start"
+        torrent_file = open(filename,'rb')
+        torrent_data = Binary(torrent_file.read()+torrent_file.read())
+        torrent_file.close()
+        RemoteUpdate.Jobs.put((action, torrent_data))
+
+    @classmethod
+    def SendTorrentUrl(self, url, start=False):
+        action = "load"
+        if start:
+            action += "_start"
+        RemoteUpdate.Jobs.put((action, url))
+
 
 class MainWindow(wx.Frame):
     def __init__(self, parent, id, title):
         wx.Frame.__init__(self, parent, id, title, size=(600,600))
         self.refresher_thread = UpdateScheduler()
         ToolBar = wx.BoxSizer(wx.HORIZONTAL)
-        AddTorrentButton = wx.Button(self,label="Add a torrent")
-        AddTorrentButton.Bind(wx.EVT_BUTTON, self.OnAddTorrent)
+        AddTorrentButton = wx.Button(self,label="Add torrent")
+        AddTorrentButton.Bind(wx.EVT_BUTTON, wrtc.AddTorrent)
         ToolBar.Add(AddTorrentButton, 0, wx.RIGHT, 5)
-        SettingsButton = wx.Button(self,label="Change settings")
-        time.sleep(10)
-#        SettingsButton.Bind(wx.EVT_BUTTON, wrtc.OnSettings)
-      #    ToolBar.Add(SettingsButton, 0, wx.RIGHT, 5)
 
         global NB
         NB = TorrentsNotebook(self)
@@ -91,38 +109,9 @@ class MainWindow(wx.Frame):
         self.Show()
         self.refresher_thread.start()
 
-
-    def OnAbout(self,e):
-        d = wx.MessageDialog( self, "wxPython\nr\nTorrent\nclient", "About "+wrtc.Title, wx.OK)
-        d.ShowModal()
-        d.Destroy()
-
     def OnExit(self,e):
         InitQueues()
         self.Destroy()
-
-    def OnAddTorrent(self,e):
-        dlg = LoadTorrentDialog()
-        if dlg.ShowModal() == wx.ID_OK:
-            if dlg.filepath.GetValue():
-                LoadFile(dlg.filepath.GetValue())
-            elif dlg.url.GetValue():
-                LoadUrl(dlg.url.GetValue())
-        dlg.Destroy()
-
-    def LoadFile(self, filename, start=False):
-        action = "load_raw"
-        if start:
-            action += "_start"
-        torrent_file = open(filename)
-        torrent_data = torrent_file.read()
-        self.JobQueueLoader.put((action, torrent_data))
-
-    def LoadUrl(self, url, start=False):
-        action = "load"
-        if start:
-            action += "_start"
-        self.JobQueueLoader.put((action, url))
 
 
 class TorrentsNotebook(wx.Notebook):
@@ -131,17 +120,20 @@ class TorrentsNotebook(wx.Notebook):
         self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.OnPageChange)
         self.views_to_load = ["incomplete", "seeding", "stopped"]
         self.LoadViews()
+        self.AddPage(SettingsPanel(self), 'Settings')
 
     def OnPageChange(self, event):
+        page = self.GetPage(event.GetSelection())
         InitQueues()
-        if self.GetCurrentPage() and len(self.GetCurrentPage().torrents) < 1:
-            self.GetCurrentPage().Synchronize()
+        if page and hasattr(page, "torrents"):
+            page.Synchronize()
         event.Skip()
         
     def LoadViews(self):
         self.DeleteAllPages()
         for view in self.views_to_load:
             self.AddPage(ViewPanel(self, view), view.capitalize());
+
 
 class ViewPanel(sp.ScrolledPanel):
     def __init__(self, parent, title="default"):
@@ -179,7 +171,7 @@ class ViewPanel(sp.ScrolledPanel):
             child.Update()
       
     def Synchronize(self):
-        RemoteUpdate.jobs.put(("download_list",self.title, GUI_UPDATER, cbec.CallbackEvent(method=getattr(self, "UpdateList"))))
+        RemoteUpdate.Jobs.put(("download_list",self.title, RemoteUpdate.CbHandler, cbec.CallbackEvent(method=getattr(self, "UpdateList"))))
 
     def UpdateList(self, new_hashlist):
         current_hashlist = self.torrents.keys()
@@ -193,7 +185,7 @@ class ViewPanel(sp.ScrolledPanel):
             self.GetSizer().Layout()
 
 class TorrentPanel(wx.Panel):
-    def __init__(self, parent, infohash, cbHandler, job_queue, job_counter):
+    def __init__(self, parent, infohash):
         wx.Panel.__init__(self, parent, style=wx.RAISED_BORDER)
         self.infohash = infohash
         TopSizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -238,15 +230,15 @@ class TorrentPanel(wx.Panel):
         return False
 
     def Start(self):
-        RemoteUpdate.jobs.put(("d.start",self.infohash))
+        RemoteUpdate.Jobs.put(("d.start",self.infohash))
 
     def Stop(self):
-        RemoteUpdate.jobs.put(("d.stop",self.infohash))
+        RemoteUpdate.Jobs.put(("d.stop",self.infohash))
 
     def OnErase(self, e):
         dlg = wx.MessageDialog(self, "Are you sure you want to remove this torrent?", "Delete torrent", wx.OK | wx.CANCEL | wx.ICON_QUESTION)
         if dlg.ShowModal() == wx.ID_OK:
-            RemoteUpdate.jobs.put(("d.erase",self.infohash))
+            RemoteUpdate.Jobs.put(("d.erase",self.infohash))
             sizer = self.GetParent().GetSizer()
             self.Destroy()
             sizer.Layout()
@@ -312,10 +304,9 @@ class LoadTorrentDialog(wx.Dialog):
         dlg.Destroy()
 
 
-class SettingsDialog(wx.Dialog):
-    def __init__(self, first_run=False):
-        wx.Dialog.__init__(self, None, wx.ID_ANY, "Change Settings")
-        self.first_run = first_run
+class SettingsPanel(sp.ScrolledPanel):
+    def __init__(self, parent):
+        sp.ScrolledPanel.__init__(self, parent)
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.SetSizer(sizer)
         padding = 3
@@ -337,20 +328,31 @@ class SettingsDialog(wx.Dialog):
             sizer.Add(settings[k]["sizer"], 0, wx.EXPAND)
         self.settings = settings
 
-        ok = wx.Button(self, id=wx.ID_OK)
-        cancel = wx.Button(self, id=wx.ID_CANCEL)
-        buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        buttons_sizer.AddMany([(ok, 0, wx.ALIGN_RIGHT | wx.ALL, padding),(cancel, 0, wx.ALIGN_RIGHT | wx.ALL, padding)])
-        sizer.Add(buttons_sizer)
+        save = wx.Button(self, id=wx.ID_OK, label="Save")
+        save.Bind(wx.EVT_BUTTON, self.SaveSettings)
+        sizer.Add(save, 0, wx.ALIGN_RIGHT | wx.ALL, padding)
+
+    def SaveSettings(self, evt):
+        for k, v in self.settings.iteritems():
+            wrtc.Settings[k] = v['ctrl'].GetValue()
+        wrtc.SaveSettings()
+        
+
+    """ This is a NOP because the GUI updater attempts to update the settings page"""
+    def UpdateVisible(self):
+        return True
+
+    """ This is a NOP because the GUI updater attempts to update the settings page"""
+    Synchronize = UpdateVisible
 
 def InitQueues():
     try:
-        RemoteUpdate.jobs.mutex.acquire()
-        RemoteUpdate.jobs.queue.clear()
-        RemoteUpdate.jobs.mutex.release()
+        RemoteUpdate.Jobs.mutex.acquire()
+        RemoteUpdate.Jobs.queue.clear()
+        RemoteUpdate.Jobs.mutex.release()
     except:
-				print("Ah fuck")
-				time.sleep(10)
+        print("Ah fuck")
+        time.sleep(10)
         quit()
     RemoteUpdate.JobCounter.__init__()
 
@@ -366,7 +368,11 @@ def FormatBytes(bytes, characters=5):
     number = str(int(bytes)).rjust(4)
     return number + unit
 
-GUI_UPDATER = cbec.CallbackEventCatcher("infohash",getattr(RemoteUpdate.JobCounter, 'dec'))
+RemoteUpdate.CbHandler = cbec.CallbackEventCatcher("infohash",getattr(RemoteUpdate.JobCounter, 'dec'))
 
 app = wrtc()
+
+RemoteUpdate.Icons = wrtc.Icons
+RemoteUpdate.ControlIcons = wrtc.ControlIcons
+
 app.MainLoop()
