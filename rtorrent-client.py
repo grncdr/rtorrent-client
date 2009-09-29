@@ -1,8 +1,10 @@
 #!/usr/bin/python -d
 
-"""
-This is a little app that connects to and monitors a remote rTorrent via xmlrpc, with nice progress bars and the like, as well as handling torrents on the local machine by uploading them to the remote rTorrent instance
-"""
+'''
+File: rtorrent-client.py
+Author: Stephen Sugden (grncdr)
+Description: This is a little app that connects to and monitors a remote rTorrent via xmlrpc, with nice progress bars and the like, as well as handling torrents on the local machine by uploading them to the remote rTorrent instance
+'''
 
 import os, sys, threading, time, wx, pickle
 from wx.lib import scrolledpanel as sp
@@ -12,7 +14,7 @@ from controls import *
 from xmlrpclib import ServerProxy, Binary
 
 class wrtc(wx.App):
-    Settings = { "URL": "http://localhost:5000/RPC2", "REMOTE_BROWSE_URL": " ", "REMOTE_BROWSE_ENABLE": False }
+    Settings = { "URL": "http://localhost:5000/RPC2", "REMOTE_BROWSE_URL": "", "REMOTE_BROWSE_ENABLE": False }
     if os.name == 'nt':
         ConfigPath = os.path.expanduser("~\AppData\Local\wrtc.rc")
     else:
@@ -30,12 +32,13 @@ class wrtc(wx.App):
         wrtc.Proxy = ServerProxy(self.Settings["URL"])
         self.daemon_thread = RTDaemon(RemoteUpdate.Jobs, wrtc.Proxy)
         self.daemon_thread.start()
-        if sys.argv[1]:
+        if len(sys.argv) > 1 and sys.argv[1]:
             wrtc.AddTorrent(None, sys.argv[1])
         return True
 
     @classmethod
     def LoadIcons(cls):
+    ''' Load the system icons used for the controls in the app '''
         cls.Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
         cls.Icons['pause'] = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR)
         cls.Icons['add'] = wx.ArtProvider.GetBitmap(wx.ART_NEW, wx.ART_TOOLBAR)
@@ -44,6 +47,7 @@ class wrtc(wx.App):
 
     @classmethod
     def LoadSettings(cls):
+    ''' Load the stored settings '''
         try:
             config_file = open(cls.ConfigPath)
             cls.Settings.update(pickle.load(config_file))
@@ -295,7 +299,7 @@ class LoadTorrentDialog(wx.Dialog):
         sizer.AddMany([(file_sizer, 0, wx.EXPAND),(url_sizer, 0, wx.EXPAND),(dest_sizer, 0, wx.EXPAND),(start_sizer, 0, wx.EXPAND),(buttons_sizer, 0, wx.EXPAND)])
 
     def OnBrowse(self,e):
-        """ Open a file"""
+        ''' Open a file'''
         dlg = wx.FileDialog(self, "Choose a file", os.getcwd(), "", "*.torrent", wx.OPEN)
         if dlg.ShowModal() == wx.ID_OK:
             self.filename=dlg.GetFilename()
@@ -338,11 +342,10 @@ class SettingsPanel(sp.ScrolledPanel):
         wrtc.SaveSettings()
         
 
-    """ This is a NOP because the GUI updater attempts to update the settings page"""
     def UpdateVisible(self):
+    ''' This is a NOP because the GUI updater attempts to update the settings page'''
         return True
 
-    """ This is a NOP because the GUI updater attempts to update the settings page"""
     Synchronize = UpdateVisible
 
 def InitQueues():
