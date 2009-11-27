@@ -1,10 +1,11 @@
 import wx, threading
+from xmlrpclib import ServerProxy, Binary
 class RTDaemon(threading.Thread):
-    def __init__(self, queue, proxy):
+    def __init__(self, queue, url):
         threading.Thread.__init__(self)
         self.setDaemon(True)
         self.queue = queue
-        self.proxy = proxy
+        self.proxy = ServerProxy(url)
 
     def run(self):
         while True:
@@ -22,7 +23,7 @@ class RTDaemon(threading.Thread):
         try:
             response = getattr(self.proxy, p["command"])(p["arguments"])
         except:
-            print "\n***Remote call failed***\nproxy:",self.proxy,"\ncall:",job[0],"(",job[1],")"
+            print "\n***Remote call failed***\nproxy:",self.proxy,"\ncall:",job[0]
             self.queue.put(job)
             return True
 
@@ -30,3 +31,18 @@ class RTDaemon(threading.Thread):
             p["event"].response = response
             wx.PostEvent(p["callback_handler"], p["event"])
         return True
+
+    def send_file(self, filename, start=False):
+        action = "load_raw"
+        if start:
+            action += "_start"
+        torrent_file = open(filename,'rb')
+        torrent_data = Binary(torrent_file.read()+torrent_file.read())
+        torrent_file.close()
+        self.queue.put((action, torrent_data))
+
+    def send_url(self, url, start=False):
+        action = "load"
+        if start:
+            action += "_start"
+        self.queue.put((action, url))
