@@ -4,20 +4,21 @@ from Queue import Queue
 from callbackeventcatcher import CallbackEvent
 
 class RemoteUpdate:
-    JobCounter = MultiQueue()
-    Jobs = Queue()
-    def __init__(self, attributes, view):
+    ''' Base class for controls that update their value via xmlrpc calls '''
+    def __init__(self, job_queue, job_counter, attributes, view):
+        self.queue = job_queue
+        self.job_counter = job_counter
         self.view = view
         self.attributes = attributes
         self.waiting = False
         self.skip = False
 
-    def UpdateSelf(self, attribute):
+    def update_self(self, attribute):
         a = self.attributes[attribute]
         if self.IsVisible() and not self.waiting and not self.skip:
             self.waiting = True
-            self.Jobs.put((a["command"],a["parameter"], self.CbHandler, CallbackEvent(method=getattr(self, a["callback"]))))
-            self.JobCounter.inc(a["parameter"])
+            self.queue.put((a["command"],a["parameter"], self.CbHandler, CallbackEvent(method=getattr(self, a["callback"]))))
+            self.job_counter.inc(a["parameter"])
 
     def IsVisible(self):
         if self.view == self.view.GetParent().GetCurrentPage():
@@ -36,41 +37,40 @@ class RemoteUpdate:
         return False
 
 class RemoteProgressBar(wx.Gauge, RemoteUpdate):
-    def __init__(self, parent, infohash):
+    def __init__(self, parent, job_queue, job_counter):
         wx.Gauge.__init__(self, parent, wx.ID_ANY, 0)
+        self.infohash = parent.infohash
         attributes = {
             "range": {
                 "command": "d.get_size_bytes", 
-                "parameter": infohash, 
+                "parameter": self.infohash, 
                 "callback": "SetRange" },
             "value": {
                 "command": "d.get_bytes_done",
-                "parameter": infohash,
+                "parameter": self.infohash,
                 "callback": "SetValue",
             }
         }
-        self.infohash = infohash
-        RemoteUpdate.__init__(self, attributes, self.GetGrandParent())
+        RemoteUpdate.__init__(self, job_queue, job_counter, attributes, self.GetGrandParent())
 
     def SetValue(self, pos):
         wx.Gauge.SetValue(self, pos)
         if pos == self.GetRange():
             self.skip = True
 
-
 class RemoteLabel(wx.StaticText, RemoteUpdate):
-    def __init__(self, parent, infohash, command, default, format_string="%s", transformer=lambda s:str(s), dynamic=False):
+    def __init__(self, parent, job_queue, job_counter, command, default, format_string="%s", transformer=lambda s:str(s), dynamic=False):
         wx.StaticText.__init__(self, parent, wx.ID_ANY, format_string % transformer(default))
-        self.infohash = infohash
+        self.infohash = parent.infohash
         self.command = command
         self.format_string = format_string
         self.transformer = transformer
         self.dynamic = dynamic
         attributes = {"label": {
             "command": command, 
-            "parameter": infohash, 
+            "parameter": parent.infohash, 
             "callback": "SetLabel" }}
-        RemoteUpdate.__init__(self, attributes, self.GetGrandParent())
+        RemoteUpdate.__init__(self, job_queue, job_counter, attributes, self.GetGrandParent())
 
     def SetLabel(self, value=None):
         wx.StaticText.SetLabel(self, self.format_string % self.transformer(value))
@@ -78,18 +78,18 @@ class RemoteLabel(wx.StaticText, RemoteUpdate):
             self.skip = True
 
 class StateButton(wx.BitmapButton, RemoteUpdate):
-    def __init__(self, parent, infohash, bitmap):
+    def __init__(self, parent, job_queue, job_counter, bitmap):
         wx.BitmapButton.__init__(self, parent, wx.ID_ANY, bitmap)
         self.Bind(wx.EVT_BUTTON, self.OnClick)
-        self.infohash = infohash
+        self.infohash = parent.infohash
         attributes = {
             "bitmap": {
                 "command": "d.get_state", 
-                "parameter": infohash, 
+                "parameter": self.infohash, 
                 "callback": "SetBitmap" 
             }
         }
-        RemoteUpdate.__init__(self, attributes, self.GetGrandParent())
+        RemoteUpdate.__init__(self, job_queue, job_counter, attributes, self.GetGrandParent())
 
     def SetBitmap(self, value):
         self.SetBitmapLabel(self.ControlIcons[value])
@@ -99,7 +99,7 @@ class StateButton(wx.BitmapButton, RemoteUpdate):
         self.Disable()
         if self.GetBitmapLabel() == self.ControlIcons[0]:
             self.GetParent().Start()
-            self.UpdateSelf("bitmap")
+            self.update_self("bitmap")
         elif self.GetBitmapLabel() == self.ControlIcons[1]:
             self.GetParent().Stop()
-            self.UpdateSelf("bitmap")
+            self.update_self("bitmap")
