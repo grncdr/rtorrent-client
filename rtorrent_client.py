@@ -10,7 +10,7 @@ import os, sys, threading, wx
 from time import sleep
 from ConfigParser import ConfigParser
 from wx.lib import scrolledpanel as sp
-from callbackeventcatcher import CallbackEvent, CallbackEventCatcher
+from callbackeventhandler import CallbackEvent, CallbackEventHandler
 from rtdaemon import RTDaemon
 from controls import *
 
@@ -35,10 +35,11 @@ class SettingsManager():
 
 
 
-print "Defining class MainWindow"
 class MainWindow(wx.Frame):
-    def __init__(self, parent, id, title):
+    def __init__(self, parent, id, title, job_queue, job_counter):
         wx.Frame.__init__(self, parent, id, title, size=(600,600))
+        self.job_queue = job_queue
+        self.job_counter = job_counter
         tool_bar = wx.BoxSizer(wx.HORIZONTAL)
         add_torrent_button = wx.Button(self,label="Add torrent")
         add_torrent_button.Bind(wx.EVT_BUTTON, load_torrent)
@@ -53,15 +54,32 @@ class MainWindow(wx.Frame):
         self.refresher_thread = UpdateScheduler(notebook)
         self.refresher_thread.start()
 
+    def init_queues(self):
+        try:
+            self.job_queue.mutex.acquire()
+            self.job_queue.queue.clear()
+            self.job_queue.mutex.release()
+        except:
+            print("Ah fuck")
+            sleep(10)
+            quit()
+        self.job_counter.__init__()
+
+    def queue_setup(self, child):
+        child.job_queue = self.job_queue
+        child.job_counter = self.job_counter
+        child.init_queues = self.init_queues
+        child.queue_setup = self.queue_setup
+
     def OnExit(self,e):
-        InitQueues()
+        self.init_queues()
         self.Destroy()
 
 
-print "Defining class TorrentsNotebook"
 class TorrentsNotebook(wx.Notebook):
-    def __init__(self, *args, **kwargs):
-        wx.Notebook.__init__(self, *args, **kwargs)
+    def __init__(self, parent, *args, **kwargs):
+        wx.Notebook.__init__(self, parent, *args, **kwargs)
+        parent.queue_setup(self)
         self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.OnPageChange)
         self.views_to_load = ["incomplete", "seeding", "stopped"]
         self.load_views()
@@ -69,7 +87,7 @@ class TorrentsNotebook(wx.Notebook):
 
     def OnPageChange(self, event):
         page = self.GetPage(event.GetSelection())
-        InitQueues()
+        self.init_queues()
         if page and hasattr(page, "torrents"):
             page.synchronize()
         event.Skip()
@@ -80,10 +98,10 @@ class TorrentsNotebook(wx.Notebook):
             self.AddPage(ViewPanel(self, view), view.capitalize());
 
 
-print "Defining class ViewPanel"
 class ViewPanel(sp.ScrolledPanel):
     def __init__(self, parent, title="default"):
         sp.ScrolledPanel.__init__(self, parent)
+        parent.queue_setup(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.torrents = {}
         self.title = title
@@ -108,16 +126,14 @@ class ViewPanel(sp.ScrolledPanel):
 
     def OnScroll(self, event):
         event.Skip()
-        InitQueues()
-
-
+        self.init_queues()
 
     def update_visible(self):
         for child in self.GetChildren():
             child.Update()
       
     def synchronize(self):
-        job_queue.put(("download_list",self.title, RemoteUpdate.CbHandler, CallbackEvent(method=getattr(self, "update_list"))))
+        self.job_queue.put(("download_list", self.title, CallbackEvent(method=self.update_list)))
 
     def update_list(self, new_hashlist):
         current_hashlist = self.torrents.keys()
@@ -130,10 +146,10 @@ class ViewPanel(sp.ScrolledPanel):
         if len(current_hashlist) != len(self.torrents.keys()):
             self.GetSizer().Layout()
 
-print "Defining class TorrentPanel"
 class TorrentPanel(wx.Panel):
     def __init__(self, parent, infohash):
         wx.Panel.__init__(self, parent, style=wx.RAISED_BORDER)
+        parent.queue_setup(self)
         self.infohash = infohash
 
         # Create sizers
@@ -144,16 +160,16 @@ class TorrentPanel(wx.Panel):
         LnTSizer = wx.BoxSizer(wx.HORIZONTAL)
         RnPSizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        self.progress_bar = RemoteProgressBar(self, job_queue, job_counter)
-        self.upload_rate_label = RemoteLabel(self, job_queue, job_counter,
+        self.progress_bar = RemoteProgressBar(self)
+        self.upload_rate_label = RemoteLabel(self,
                                              "d.get_up_rate", "0", "Up: %s/s", FormatBytes, True)
-        self.download_rate_label = RemoteLabel(self, job_queue, job_counter, 
+        self.download_rate_label = RemoteLabel(self, 
                                                "d.get_down_rate", "0", 
                                                "Down: %s/s", FormatBytes, True)
 
-        self.start_stop = StateButton(self, job_queue, job_counter, Icons['pause'])
+        self.start_stop_button = StateButton(self, self.start_stop, ControlIcons)
 
-        self.title_label = RemoteLabel(self, job_queue, job_counter, 
+        self.title_label = RemoteLabel(self, 
                                        "d.get_base_filename", 
                                        "Loading Torrent Info...")
         
@@ -168,13 +184,13 @@ class TorrentPanel(wx.Panel):
         LnTSizer.Add(self.erase_button, 0, wx.ALIGN_RIGHT | wx.ALL, 2)
         InfoSizer.Add(LnTSizer, 0, wx.EXPAND)
         InfoSizer.Add(RnPSizer, 0, wx.EXPAND)
-        TopSizer.Prepend(self.start_stop, 0, wx.ALIGN_CENTER | wx.ALL, 2)
+        TopSizer.Prepend(self.start_stop_button, 0, wx.ALIGN_CENTER | wx.ALL, 2)
         self.update()
 
     def update(self):
         if self.title_label.GetLabel() == "Loading Torrent Info...":
             self.title_label.update_self("label")
-        self.start_stop.update_self("bitmap")
+        self.start_stop_button.update_self("bitmap")
         self.upload_rate_label.update_self("label")
         if not self.progress_bar.GetRange():
             self.progress_bar.update_self("range")
@@ -189,22 +205,21 @@ class TorrentPanel(wx.Panel):
             return True
         return False
 
-    def start_torrent(self):
-        job_queue.put(("d.start",self.infohash))
-
-    def stop_torrent(self):
-        job_queue.put(("d.stop",self.infohash))
+    def start_stop(self, button):
+        if button.GetBitmapLabel() == ControlIcons[0]:
+            job_queue.put(("d.start", self.infohash))
+        elif button.GetBitmapLabel() == ControlIcons[1]:
+            job_queue.put(("d.stop", self.infohash))
 
     def on_erase(self, e):
         dlg = wx.MessageDialog(self, "Are you sure you want to remove this torrent?", "Delete torrent", wx.OK | wx.CANCEL | wx.ICON_QUESTION)
         if dlg.ShowModal() == wx.ID_OK:
-            job_queue.put(("d.erase",self.infohash))
+            job_queue.put(("d.erase", self.infohash))
             sizer = self.GetParent().GetSizer()
             self.Destroy()
             sizer.Layout()
         dlg.Destroy()
 
-print "Defining class UpdateScheduler"
 class UpdateScheduler(threading.Thread):
     def __init__(self, notebook):
         threading.Thread.__init__(self)
@@ -217,7 +232,6 @@ class UpdateScheduler(threading.Thread):
             self.notebook.GetCurrentPage().synchronize()
             sleep(2)
 
-print "Defining class LoadTorrentDialog"
 class LoadTorrentDialog(wx.Dialog):
     def __init__(self):
         wx.Dialog.__init__(self, None, wx.ID_ANY, "Load torrent")
@@ -267,7 +281,6 @@ class LoadTorrentDialog(wx.Dialog):
         dlg.Destroy()
 
 
-print "Defining class SettingsPanel"
 class SettingsPanel(sp.ScrolledPanel):
     def __init__(self, parent):
         sp.ScrolledPanel.__init__(self, parent)
@@ -308,19 +321,6 @@ class SettingsPanel(sp.ScrolledPanel):
 
     synchronize = update_visible
 
-print "Define global InitQueues"
-def InitQueues():
-    try:
-        job_queue.mutex.acquire()
-        job_queue.queue.clear()
-        job_queue.mutex.release()
-    except:
-        print("Ah fuck")
-        sleep(10)
-        quit()
-    job_counter.__init__()
-
-print "Define global FormatBytes"
 def FormatBytes(bytes, characters=5):
     output = unit = ""
     units = ("KB", "MB", "GB", "TB")
@@ -344,20 +344,22 @@ def load_torrent(self,e=None,filename=None):
             daemon_thread.send_url(dlg.url.GetValue())
     dlg.Destroy()
 
-if __name__ == "__main__":
+def fire_it_up():
+    global Icons, ControlIcons, settings_manager
     settings_manager = SettingsManager()
     job_counter = MultiQueue()
     job_queue = Queue()
-    RemoteUpdate.CbHandler = CallbackEventCatcher("infohash",job_counter.dec)
+    
 
     app = wx.PySimpleApp()
-    frame = MainWindow( None, wx.ID_ANY, "wrTc - wxPython rTorrent client" )
+    frame = MainWindow(None, wx.ID_ANY, "wrTc - wxPython rTorrent client", 
+                       job_queue, job_counter)
 
-    daemon_thread = RTDaemon(job_queue, settings_manager.settings.get("DEFAULT","URL"))
+    callback_event_handler = CallbackEventHandler("infohash", job_counter.dec)
+    daemon_thread = RTDaemon(job_queue, callback_event_handler,
+                             settings_manager.settings.get("DEFAULT", "URL"))
+
     daemon_thread.start()
-    if len(sys.argv) > 2 and sys.argv[1]:
-        load_torrent(None, sys.argv[1])
-
     Icons = {}
     Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
     Icons['pause'] = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR)
@@ -365,9 +367,7 @@ if __name__ == "__main__":
     Icons['remove'] = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_FRAME_ICON)
     ControlIcons = (Icons['play'], Icons['pause'])
 
-    print "Setting Icons"
-    RemoteUpdate.Icons = Icons
-    RemoteUpdate.ControlIcons = ControlIcons
-
-    print "Entering main loop"
     app.MainLoop()
+
+if __name__ == "__main__":
+    fire_it_up()

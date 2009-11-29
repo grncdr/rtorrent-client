@@ -5,9 +5,8 @@ from callbackeventcatcher import CallbackEvent
 
 class RemoteUpdate:
     ''' Base class for controls that update their value via xmlrpc calls '''
-    def __init__(self, job_queue, job_counter, attributes, view):
-        self.queue = job_queue
-        self.job_counter = job_counter
+    def __init__(self, parent, attributes, view):
+        parent.queue_setup(self)
         self.view = view
         self.attributes = attributes
         self.waiting = False
@@ -17,8 +16,10 @@ class RemoteUpdate:
         a = self.attributes[attribute]
         if self.IsVisible() and not self.waiting and not self.skip:
             self.waiting = True
-            self.queue.put((a["command"],a["parameter"], self.CbHandler, CallbackEvent(method=getattr(self, a["callback"]))))
-            self.job_counter.inc(a["parameter"])
+            self.job_queue.put(( a["command"], self.infohash,
+                             CallbackEvent(method=getattr(self, a["callback"]))
+                          ))
+            self.job_counter.inc(self.infohash)
 
     def IsVisible(self):
         if self.view == self.view.GetParent().GetCurrentPage():
@@ -37,21 +38,19 @@ class RemoteUpdate:
         return False
 
 class RemoteProgressBar(wx.Gauge, RemoteUpdate):
-    def __init__(self, parent, job_queue, job_counter):
+    def __init__(self, parent):
         wx.Gauge.__init__(self, parent, wx.ID_ANY, 0)
         self.infohash = parent.infohash
         attributes = {
             "range": {
                 "command": "d.get_size_bytes", 
-                "parameter": self.infohash, 
                 "callback": "SetRange" },
             "value": {
                 "command": "d.get_bytes_done",
-                "parameter": self.infohash,
                 "callback": "SetValue",
             }
         }
-        RemoteUpdate.__init__(self, job_queue, job_counter, attributes, self.GetGrandParent())
+        RemoteUpdate.__init__(self, parent, attributes, self.GetGrandParent())
 
     def SetValue(self, pos):
         wx.Gauge.SetValue(self, pos)
@@ -59,7 +58,7 @@ class RemoteProgressBar(wx.Gauge, RemoteUpdate):
             self.skip = True
 
 class RemoteLabel(wx.StaticText, RemoteUpdate):
-    def __init__(self, parent, job_queue, job_counter, command, default, format_string="%s", transformer=lambda s:str(s), dynamic=False):
+    def __init__(self, parent, command, default, format_string="%s", transformer=lambda s:str(s), dynamic=False):
         wx.StaticText.__init__(self, parent, wx.ID_ANY, format_string % transformer(default))
         self.infohash = parent.infohash
         self.command = command
@@ -68,9 +67,8 @@ class RemoteLabel(wx.StaticText, RemoteUpdate):
         self.dynamic = dynamic
         attributes = {"label": {
             "command": command, 
-            "parameter": parent.infohash, 
             "callback": "SetLabel" }}
-        RemoteUpdate.__init__(self, job_queue, job_counter, attributes, self.GetGrandParent())
+        RemoteUpdate.__init__(self, parent, attributes, self.GetGrandParent())
 
     def SetLabel(self, value=None):
         wx.StaticText.SetLabel(self, self.format_string % self.transformer(value))
@@ -78,28 +76,25 @@ class RemoteLabel(wx.StaticText, RemoteUpdate):
             self.skip = True
 
 class StateButton(wx.BitmapButton, RemoteUpdate):
-    def __init__(self, parent, job_queue, job_counter, bitmap):
-        wx.BitmapButton.__init__(self, parent, wx.ID_ANY, bitmap)
+    def __init__(self, parent, bind_to, bitmap):
+        wx.BitmapButton.__init__(self, parent, wx.ID_ANY, bitmap[0])
+        self.icons = bitmap
         self.Bind(wx.EVT_BUTTON, self.OnClick)
         self.infohash = parent.infohash
+        self.action = bind_to
         attributes = {
             "bitmap": {
                 "command": "d.get_state", 
-                "parameter": self.infohash, 
                 "callback": "SetBitmap" 
             }
         }
-        RemoteUpdate.__init__(self, job_queue, job_counter, attributes, self.GetGrandParent())
+        RemoteUpdate.__init__(self, parent, attributes, self.GetGrandParent())
 
     def SetBitmap(self, value):
-        self.SetBitmapLabel(self.ControlIcons[value])
+        self.SetBitmapLabel(self.icons[value])
         self.Enable()
 
     def OnClick(self, event):
         self.Disable()
-        if self.GetBitmapLabel() == self.ControlIcons[0]:
-            self.GetParent().Start()
-            self.update_self("bitmap")
-        elif self.GetBitmapLabel() == self.ControlIcons[1]:
-            self.GetParent().Stop()
-            self.update_self("bitmap")
+        self.action(self) # Action expects the button as first argument
+        self.update_self("bitmap")
