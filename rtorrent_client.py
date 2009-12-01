@@ -15,12 +15,12 @@ from rtdaemon import RTDaemon
 from controls import *
 
 class SettingsManager():
-    def __init__(self, config_path=None, load=True):
-        self.settings = ConfigParser({ "URL": "http://baby-box/rtorrent", "REMOTE_BROWSE_URL": "", "REMOTE_BROWSE_ENABLE": "no" })
+    def __init__(self, defaults={}, config_path=None, load=True):
+        self.settings = ConfigParser(defaults)
         if load:
             if not config_path:
-                config_path = self.get_default_config_path()
-            self.settings.read(config_path)
+                self.config_path = self.get_default_config_path()
+            self.settings.read(self.config_path)
 
     def get_default_config_path(self):
         if os.name == 'nt':
@@ -29,9 +29,11 @@ class SettingsManager():
             config_path = os.path.expanduser("~/.config/wrtc.rc")
         return config_path
 
-    def save(self, iterable):
-        for k, v in iterable:
-            self.settings.set("DEFAULT", k, v)
+    def save(self, settings):
+        ''' Settings should be a simple key value dictionary '''
+        for key in settings.keys():
+            self.settings.set("DEFAULT", key, settings[key])
+        self.settings.write(open(self.config_path,'w'))
 
 
 
@@ -42,16 +44,16 @@ class MainWindow(wx.Frame):
         self.job_counter = job_counter
         tool_bar = wx.BoxSizer(wx.HORIZONTAL)
         add_torrent_button = wx.Button(self,label="Add torrent")
-        add_torrent_button.Bind(wx.EVT_BUTTON, load_torrent)
-        tool_bar.Add(add_torrent_button, 0, wx.RIGHT, 5)
+        add_torrent_button.Bind(wx.EVT_BUTTON, self.load_torrent)
+        tool_bar.Add(add_torrent_button, 0, wx.ALIGN_RIGHT, 5)
 
-        notebook = TorrentsNotebook(self)
+        self.notebook = TorrentsNotebook(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
-        main_sizer.Add(tool_bar, 0, wx.TOP | wx.BOTTOM, 5)
-        main_sizer.Add(notebook, 1, wx.EXPAND)
+        main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 10)
+        main_sizer.Add(tool_bar, 0, wx.ALL | wx.ALIGN_RIGHT, 10)
         self.SetSizer(main_sizer)
         self.Show()
-        self.refresher_thread = UpdateScheduler(notebook)
+        self.refresher_thread = UpdateScheduler(self.notebook)
         self.refresher_thread.start()
 
     def init_queues(self):
@@ -65,7 +67,24 @@ class MainWindow(wx.Frame):
             quit()
         self.job_counter.__init__()
 
+    def load_torrent(self,e=None,filename=None):
+        dlg = LoadTorrentDialog()
+        if filename:
+            dlg.filepath.SetValue(filename)
+        if dlg.ShowModal() == wx.ID_OK:
+            action = "load"
+            if dlg.filepath.GetValue() != '':
+                action += "_raw"
+                argument = self.get_torrent_data(dlg.filepath.GetValue())
+            elif dlg.url.GetValue() != '':
+                argument = dlg.url.GetValue()
+            if dlg.start_immediate.GetValue():
+                action += "_start"
+            self.job_queue.put((action, argument))
+        dlg.Destroy()
+
     def queue_setup(self, child):
+        ''' Takes an object and attaches the queues and their methods to it, avoids the need for a global queue object '''
         child.job_queue = self.job_queue
         child.job_counter = self.job_counter
         child.init_queues = self.init_queues
@@ -83,7 +102,8 @@ class TorrentsNotebook(wx.Notebook):
         self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.OnPageChange)
         self.views_to_load = ["incomplete", "seeding", "stopped"]
         self.load_views()
-        self.AddPage(SettingsPanel(self), 'Settings')
+        self.settings_panel = SettingsPanel(self)
+        self.AddPage(self.settings_panel, 'Settings')
 
     def OnPageChange(self, event):
         page = self.GetPage(event.GetSelection())
@@ -110,8 +130,8 @@ class ViewPanel(sp.ScrolledPanel):
 
     def add_to_view(self, hashlist):
         for infohash in hashlist:
-            if infohash not in job_counter:
-                job_counter.changecount(infohash)
+            if infohash not in self.job_counter:
+                self.job_counter.changecount(infohash)
             self.torrents[infohash] = TorrentPanel(self, infohash)
             self.GetSizer().Add(self.torrents[infohash], 0, wx.TOP | wx.BOTTOM | wx.EXPAND, 3)
         self.SetupScrolling()
@@ -162,10 +182,10 @@ class TorrentPanel(wx.Panel):
 
         self.progress_bar = RemoteProgressBar(self)
         self.upload_rate_label = RemoteLabel(self,
-                                             "d.get_up_rate", "0", "Up: %s/s", FormatBytes, True)
+                                             "d.get_up_rate", "0", "Up: %s/s", format_bytes, True)
         self.download_rate_label = RemoteLabel(self, 
                                                "d.get_down_rate", "0", 
-                                               "Down: %s/s", FormatBytes, True)
+                                               "Down: %s/s", format_bytes, True)
 
         self.start_stop_button = StateButton(self, self.start_stop, ControlIcons)
 
@@ -255,9 +275,6 @@ class LoadTorrentDialog(wx.Dialog):
         destpath_label = wx.StaticText(self, label="Save in:")
         self.destpath = wx.TextCtrl(self)
         dest_sizer.AddMany([(destpath_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, padding), (self.destpath, 1, wx.EXPAND | wx.ALL, padding)])
-        if settings_manager.settings.get('DEFAULT',"REMOTE_BROWSE_ENABLE") == 'yes': # fixme, this should be an actual boolean value
-            dest_browse_button = wx.Button(self, 99, "Browse...")
-            dest_sizer.Add(dest_browse_button, 0, wx.ALL, padding)
               
         start_sizer = wx.BoxSizer(wx.HORIZONTAL)
         start_label = wx.StaticText(self, label="Start on load")
@@ -284,13 +301,17 @@ class LoadTorrentDialog(wx.Dialog):
 class SettingsPanel(sp.ScrolledPanel):
     def __init__(self, parent):
         sp.ScrolledPanel.__init__(self, parent)
-
+        self.settings_manager = SettingsManager({ "rTorrent URL": "http://localhost/RPC2", "Remote Browse URL": "", "Enable remote browse": "no" })
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.SetSizer(sizer)
         padding = 3
         settings = {}
-        for item in settings_manager.settings.items("DEFAULT"):
-            k, v = item
+        for item in self.settings_manager.settings.items("DEFAULT"):
+            k = item[0]
+            try:
+                v = self.settings_manager.settings.getboolean("DEFAULT", k)
+            except:
+                v = self.settings_manager.settings.get("DEFAULT", k)
             settings[k] = {}
             stype = type(v)
             if stype == type(False):
@@ -308,12 +329,15 @@ class SettingsPanel(sp.ScrolledPanel):
         self.settings = settings
 
         save = wx.Button(self, id=wx.ID_OK, label="Save")
-        save.Bind(wx.EVT_BUTTON, self.SaveSettings)
+        save.Bind(wx.EVT_BUTTON, self.save_settings)
         sizer.Add(save, 0, wx.ALIGN_RIGHT | wx.ALL, padding)
 
-    def SaveSettings(self, evt):
-        settings_manager.save(self.settings.iteritems())
-        
+    def save_settings(self, evt):
+        new_settings = {}
+        for name in self.settings.keys():
+            new_settings[name] = self.settings[name]["ctrl"].GetValue()
+        print "Saving Settings:", new_settings
+        self.settings_manager.save(new_settings)
 
     def update_visible(self):
         ''' This is a NOP because the GUI updater attempts to update the settings page'''
@@ -321,7 +345,7 @@ class SettingsPanel(sp.ScrolledPanel):
 
     synchronize = update_visible
 
-def FormatBytes(bytes, characters=5):
+def format_bytes(bytes, characters=5):
     output = unit = ""
     units = ("KB", "MB", "GB", "TB")
     bytes = float(bytes)
@@ -333,20 +357,7 @@ def FormatBytes(bytes, characters=5):
     number = str(int(bytes)).rjust(4)
     return number + unit
 
-def load_torrent(self,e=None,filename=None):
-    dlg = LoadTorrentDialog()
-    if filename:
-        dlg.filepath.SetValue(filename)
-    if dlg.ShowModal() == wx.ID_OK:
-        if dlg.filepath.GetValue():
-            daemon_thread.send_file(dlg.filepath.GetValue())
-        elif dlg.url.GetValue():
-            daemon_thread.send_url(dlg.url.GetValue())
-    dlg.Destroy()
-
 def fire_it_up():
-    global Icons, ControlIcons, settings_manager
-    settings_manager = SettingsManager()
     job_counter = MultiQueue()
     job_queue = Queue()
     
@@ -355,11 +366,17 @@ def fire_it_up():
     frame = MainWindow(None, wx.ID_ANY, "wrTc - wxPython rTorrent client", 
                        job_queue, job_counter)
 
+    settings_manager = frame.notebook.settings_panel.settings_manager
+
     callback_event_handler = CallbackEventHandler("infohash", job_counter.dec)
     daemon_thread = RTDaemon(job_queue, callback_event_handler,
-                             settings_manager.settings.get("DEFAULT", "URL"))
+                             settings_manager.settings.get("DEFAULT", "rTorrent URL"))
 
     daemon_thread.start()
+    # Do this so that save_settings can stop this thread and start a new one
+    frame.daemon_thread = daemon_thread
+
+    global Icons, ControlIcons
     Icons = {}
     Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
     Icons['pause'] = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR)

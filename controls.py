@@ -1,7 +1,7 @@
 import wx
 from multiqueue import MultiQueue
 from Queue import Queue
-from callbackeventcatcher import CallbackEvent
+from callbackeventhandler import CallbackEvent
 
 class RemoteUpdate:
     ''' Base class for controls that update their value via xmlrpc calls '''
