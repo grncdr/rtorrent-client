@@ -338,6 +338,10 @@ class SettingsPanel(sp.ScrolledPanel):
             new_settings[name] = self.settings[name]["ctrl"].GetValue()
         print "Saving Settings:", new_settings
         self.settings_manager.save(new_settings)
+        frame = self.GetGrandParent()
+        frame.init_queues()
+        frame.daemon_thread.open(self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
+        
 
     def update_visible(self):
         ''' This is a NOP because the GUI updater attempts to update the settings page'''

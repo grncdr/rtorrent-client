@@ -2,12 +2,15 @@ import threading
 from wx import PostEvent
 from xmlrpclib import ServerProxy, Binary
 class RTDaemon(threading.Thread):
-    def __init__(self, queue, cbhandler, url):
+    def __init__(self, queue=None, cbhandler=None, url=None):
         threading.Thread.__init__(self)
         self.setDaemon(True)
         self.queue = queue
-        self.proxy = ServerProxy(url)
+        self.open(url)
         self.callback_event_handler = cbhandler
+
+    def open(self, url):
+        self.proxy = ServerProxy(url)
 
     def run(self):
         while True:
