@@ -172,7 +172,7 @@ class ViewPanel(wx.ListView):
         {
             "label": "Name", 
             "command": "d.get_name",
-            'width': 300, 
+            'width': 200, 
             "default": "Loading torrent data..."
         }, 
         {
@@ -189,6 +189,18 @@ class ViewPanel(wx.ListView):
         {
             "label": "Down Rate",
             "command": "d.get_down_rate",
+            "default": "N/A",
+            "formatter": format_bytes,
+        },
+        {
+            "label": "Uploaded",
+            "command": "d.get_up_total",
+            "default": "N/A",
+            "formatter": format_bytes,
+        },
+        {
+            "label": "Downloaded",
+            "command": "d.get_down_total",
             "default": "N/A",
             "formatter": format_bytes,
         },
