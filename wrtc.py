@@ -1,9 +1,9 @@
 #!/usr/bin/python -d
 
 '''
-File: rtorrent-client.py
+File: wrTc.py
 Author: Stephen Sugden (grncdr)
-Description: This is a little app that connects to and monitors a remote rTorrent via xmlrpc, with nice progress bars and the like, as well as handling torrents on the local machine by uploading them to the remote rTorrent instance
+Description: This is a little app that connects to and monitors a remote rTorrent via xmlrpc. It can also upload local torrent files to a remote machine
 '''
 
 import os, sys, threading, wx
@@ -13,6 +13,8 @@ from wx.lib import scrolledpanel as sp
 from rtdaemon import RTDaemon
 from Queue import Queue
 from multiqueue import MultiQueue
+
+NAME_OF_THIS_APP = 'wrTc'
 
 def format_bytes(bytes, characters=5):
     output = unit = ""
@@ -27,7 +29,8 @@ def format_bytes(bytes, characters=5):
     return number + unit
 
 class SettingsManager():
-    def __init__(self, defaults={}, config_path=None, load=True):
+    def __init__(self, main_window, defaults={}, config_path=None, load=True):
+        self.main_window = main_window
         self.settings = ConfigParser(defaults)
         if load:
             if not config_path:
@@ -47,17 +50,57 @@ class SettingsManager():
             self.settings.set("DEFAULT", key, settings[key])
         self.settings.write(open(self.config_path,'w'))
 
-
+    def show_dialog(self, evt):
+        dlg = wx.Dialog(self.main_window, title="Settings")
+        sizer = wx.FlexGridSizer(4,2,0,10)
+        sizer.SetFlexibleDirection(wx.HORIZONTAL)
+        sizer.AddGrowableCol(1)
+        dlg.SetSizer(sizer)
+        for item in self.settings.items("DEFAULT"):
+            k = item[0]
+            try:
+                v = self.settings.getboolean("DEFAULT", k)
+            except:
+                v = self.settings.get("DEFAULT", k)
+            stype = type(v)
+            if stype == type(False):
+                control = wx.CheckBox(dlg)
+                control.SetValue(v)
+            elif stype == type('f') or stype == type(u'f') :
+                control = wx.TextCtrl(dlg, value=v)
+            else:
+                continue
+            label = wx.StaticText(dlg, label=k.title())
+            sizer.Add(label, flag=wx.EXPAND|wx.ALL, border=10)
+            sizer.Add(control, flag=wx.EXPAND|wx.ALL, border=10)
+        sizer.Add(wx.StaticText(dlg, label=""))
+        save = wx.Button(dlg, id=wx.ID_OK, label="Save")
+        save.Bind(wx.EVT_BUTTON, self.save)
+        sizer.Add(save, 0, wx.ALIGN_RIGHT | wx.ALL, border=10)
+        dlg.ShowModal()
 
 class MainWindow(wx.Frame):
     def __init__(self, parent, id, title, job_queue, job_counter):
         wx.Frame.__init__(self, parent, id, title, size=(600,600))
         self.job_queue = job_queue
         self.job_counter = job_counter
+        self.settings_manager = SettingsManager(self)
+
+        self.menu_bar = wx.MenuBar()
+        self.help_menu = wx.Menu()
+        self.help_menu.Append(wx.ID_ABOUT, "&About "+NAME_OF_THIS_APP)
+        self.menu_bar.Append(self.help_menu, "&Help")
+        self.SetMenuBar(self.menu_bar)
+        self.Bind(wx.EVT_MENU, self.on_about_request, id=wx.ID_ABOUT)
+
         tool_bar = wx.BoxSizer(wx.HORIZONTAL)
         add_torrent_button = wx.Button(self,label="Add torrent")
         add_torrent_button.Bind(wx.EVT_BUTTON, self.load_torrent)
         tool_bar.Add(add_torrent_button, 0, wx.ALIGN_RIGHT, 5)
+
+        settings_button = wx.Button(self,label="Settings")
+        settings_button.Bind(wx.EVT_BUTTON, self.settings_manager.show_dialog)
+        tool_bar.Add(settings_button, 0, wx.ALIGN_RIGHT, 5)
 
         self.notebook = TorrentsNotebook(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -67,6 +110,10 @@ class MainWindow(wx.Frame):
         self.Show()
         self.refresher_thread = UpdateScheduler(self.notebook)
         self.refresher_thread.start()
+
+    def on_about_request(self, evt):
+        dlg = wx.MessageDialog(self, "wxPython rTorrent client", NAME_OF_THIS_APP, wx.OK | wx.ICON_INFORMATION)
+        dlg.ShowModal()
 
     def init_queues(self):
         try:
@@ -106,8 +153,8 @@ class TorrentsNotebook(wx.Notebook):
         self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.OnPageChange)
         self.views_to_load = ["incomplete", "seeding", "stopped"]
         self.load_views()
-        self.settings_panel = SettingsPanel(self)
-        self.AddPage(self.settings_panel, 'Settings')
+#        self.settings_panel = SettingsPanel(self)
+#        self.AddPage(self.settings_panel, 'Settings')
 
     def OnPageChange(self, event):
         page = self.GetPage(event.GetSelection())
@@ -337,13 +384,6 @@ class SettingsPanel(sp.ScrolledPanel):
         frame.init_queues()
         frame.daemon_thread.open(self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
         
-
-    def update_visible(self):
-        ''' This is a NOP because the GUI updater attempts to update the settings page'''
-        return True
-
-    synchronize = update_visible
-
 def fire_it_up():
     job_counter = MultiQueue()
     job_queue = Queue()
@@ -353,9 +393,9 @@ def fire_it_up():
     frame = MainWindow(None, wx.ID_ANY, "wrTc - wxPython rTorrent client", 
                        job_queue, job_counter)
 
-    settings_manager = frame.notebook.settings_panel.settings_manager
 
-    daemon_thread = RTDaemon(job_queue, settings_manager.settings.get("DEFAULT", "rTorrent URL"))
+
+    daemon_thread = RTDaemon(job_queue, frame.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
 
     daemon_thread.start()
     # Do this so that save_settings can stop this thread and start a new one
