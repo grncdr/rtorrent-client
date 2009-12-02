@@ -153,8 +153,6 @@ class TorrentsNotebook(wx.Notebook):
         self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.OnPageChange)
         self.views_to_load = ["incomplete", "seeding", "stopped"]
         self.load_views()
-#        self.settings_panel = SettingsPanel(self)
-#        self.AddPage(self.settings_panel, 'Settings')
 
     def OnPageChange(self, event):
         page = self.GetPage(event.GetSelection())
@@ -339,51 +337,6 @@ class LoadTorrentDialog(wx.Dialog):
             self.filepath.SetValue(self.dirname+"/"+self.filename)
         dlg.Destroy()
 
-
-class SettingsPanel(sp.ScrolledPanel):
-    def __init__(self, parent):
-        sp.ScrolledPanel.__init__(self, parent)
-        self.settings_manager = SettingsManager({ "rTorrent URL": "http://localhost/RPC2", "Remote Browse URL": "", "Enable remote browse": "no" })
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        self.SetSizer(sizer)
-        padding = 3
-        settings = {}
-        for item in self.settings_manager.settings.items("DEFAULT"):
-            k = item[0]
-            try:
-                v = self.settings_manager.settings.getboolean("DEFAULT", k)
-            except:
-                v = self.settings_manager.settings.get("DEFAULT", k)
-            settings[k] = {}
-            stype = type(v)
-            if stype == type(False):
-                settings[k]["ctrl"] = wx.CheckBox(self)
-                settings[k]["ctrl"].SetValue(v)
-            elif stype == type('f') or stype == type(u'f') :
-                settings[k]["ctrl"] = wx.TextCtrl(self, value=v)
-            else:
-                continue
-            settings[k]["label"] = wx.StaticText(self, label=k.title())
-            settings[k]["sizer"] = wx.BoxSizer(wx.HORIZONTAL)
-            settings[k]["sizer"].Add(settings[k]["label"], 1, wx.EXPAND)
-            settings[k]["sizer"].Add(settings[k]["ctrl"], 3, wx.EXPAND)
-            sizer.Add(settings[k]["sizer"], 0, wx.EXPAND)
-        self.settings = settings
-
-        save = wx.Button(self, id=wx.ID_OK, label="Save")
-        save.Bind(wx.EVT_BUTTON, self.save_settings)
-        sizer.Add(save, 0, wx.ALIGN_RIGHT | wx.ALL, padding)
-
-    def save_settings(self, evt):
-        new_settings = {}
-        for name in self.settings.keys():
-            new_settings[name] = self.settings[name]["ctrl"].GetValue()
-        print "Saving Settings:", new_settings
-        self.settings_manager.save(new_settings)
-        frame = self.GetTopLevelParent()
-        frame.init_queues()
-        frame.daemon_thread.open(self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
-        
 def fire_it_up():
     job_counter = MultiQueue()
     job_queue = Queue()
