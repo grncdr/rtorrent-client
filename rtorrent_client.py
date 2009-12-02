@@ -118,109 +118,90 @@ class TorrentsNotebook(wx.Notebook):
             self.AddPage(ViewPanel(self, view), view.capitalize());
 
 
-class ViewPanel(sp.ScrolledPanel):
+class ViewPanel(wx.ListView):
+    columns = [
+        {
+            "label": "Name", 
+            "command": "d.name",
+            'width': 300, 
+            "default": "Loading torrent data..."
+        }, 
+        {
+            "label": "Progress",
+            "default": "N/A",
+        },
+        {
+            "label": "Up Rate",
+            "default": "N/A",
+        },
+        {
+            "label": "Down Rate",
+            "default": "N/A",
+        },
+        {
+            "label": "Ratio",
+            "width": 45,
+        "default": "N/A", },
+        {
+            "label": "S",
+            "width": 25,
+        "default": "N/A",
+        },
+        {
+            "label": "L",
+            "width": 25,
+            "default": "N/A",
+        },
+    ]
     def __init__(self, parent, title="default"):
-        sp.ScrolledPanel.__init__(self, parent)
+        wx.ListView.__init__(self, parent)
         parent.queue_setup(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
-        self.torrents = {}
+        self.map = {}
         self.title = title
-        self.SetSizer(sizer)
-        self.Bind(wx.EVT_SCROLLWIN, self.OnScroll)
+        self.create_columns()
 
-    def add_to_view(self, hashlist):
-        for infohash in hashlist:
-            if infohash not in self.job_counter:
-                self.job_counter.changecount(infohash)
-            self.torrents[infohash] = TorrentPanel(self, infohash)
-            self.GetSizer().Add(self.torrents[infohash], 0, wx.TOP | wx.BOTTOM | wx.EXPAND, 3)
-        self.SetupScrolling()
+    def create_columns(self):
+        i = 0
+        for column in self.columns:
+            self.InsertColumn(i,column['label'])
+            if 'width' in column:
+                self.SetColumnWidth(i,column['width'])
+            i += 1
 
-    def remove_from_view(self, hashlist):
-        for infohash in hashlist:
-            panel = self.torrents[infohash]
-            del self.torrents[infohash]
-            panel.Show(False)
-            panel.Destroy()
-        self.SetupScrolling()
+    def get_list(self):
+        self.job_queue.put(("download_list", self.title, CallbackEvent(method=self.set_list)))
 
-    def OnScroll(self, event):
-        event.Skip()
-        self.init_queues()
-
-    def update_visible(self):
-        for child in self.GetChildren():
-            child.Update()
-      
-    def synchronize(self):
-        self.job_queue.put(("download_list", self.title, CallbackEvent(method=self.update_list)))
-
-    def update_list(self, new_hashlist):
-        current_hashlist = self.torrents.keys()
-        addList = [val for val in new_hashlist if val not in current_hashlist]
-        rmList = [val for val in current_hashlist if val not in new_hashlist]
-        if len(rmList):
-            self.remove_from_view(rmList)
-        if len(addList):
-            self.add_to_view(addList)
-        if len(current_hashlist) != len(self.torrents.keys()):
-            self.GetSizer().Layout()
-
-class TorrentPanel(wx.Panel):
-    def __init__(self, parent, infohash):
-        wx.Panel.__init__(self, parent, style=wx.RAISED_BORDER)
-        parent.queue_setup(self)
-        self.infohash = infohash
-
-        # Create sizers
-        TopSizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.SetSizer(TopSizer)
-        InfoSizer = wx.BoxSizer(wx.VERTICAL)
-        TopSizer.Add(InfoSizer, 1, wx.EXPAND | wx.ALL, 2)
-        LnTSizer = wx.BoxSizer(wx.HORIZONTAL)
-        RnPSizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        self.progress_bar = RemoteProgressBar(self)
-        self.upload_rate_label = RemoteLabel(self,
-                                             "d.get_up_rate", "0", "Up: %s/s", format_bytes, True)
-        self.download_rate_label = RemoteLabel(self, 
-                                               "d.get_down_rate", "0", 
-                                               "Down: %s/s", format_bytes, True)
-
-        self.start_stop_button = StateButton(self, self.start_stop, ControlIcons)
-
-        self.title_label = RemoteLabel(self, 
-                                       "d.get_base_filename", 
-                                       "Loading Torrent Info...")
+    def set_list(self, hashlist):
+        addList = [val for val in hashlist if val not in self.map.values()]
+        rmList = [val for val in self.map.values() if val not in hashlist]
+        for infohash in rmList:
+            self.DeleteItem(self.FindItemData([(v, k) for (k, v) in self.map][infohash]))
+        for infohash in addList:
+            self.add_torrent(infohash)
+        self.update_list()
         
-        self.erase_button = wx.BitmapButton(self, wx.ID_ANY, Icons['remove'])
-        self.erase_button.Bind(wx.EVT_BUTTON, self.on_erase)
-        RnPSizer.Add(self.progress_bar, 1, wx.EXPAND)
-        RnPSizer.Add(self.upload_rate_label, 0, wx.ALIGN_CENTER | wx.LEFT, 3)
-        RnPSizer.Add(self.download_rate_label, 0, wx.ALIGN_CENTER)
+    def add_torrent(self, infohash):
+        id = wx.NewId()
+        self.map[id] = infohash
+        if infohash not in self.job_counter:
+            self.job_counter.changecount(infohash)
+        self.InsertStringItem(0, 'If you are seeing this, an error has occured ;)')
+        self.SetItemData(0, id)
+        for i in range(len(self.columns) - 1):
+            self.SetStringItem(0, i, self.columns[i]['default'])
 
+    def update_list(self):
+        for i in range(self.GetItemCount()):
+            item = self.GetItem(i)
+            infohash = self.map[item.GetData()]
+            for j in range(len(self.columns) - 1):
+                if self.GetItem(i, j).GetText() == self.columns[j]['default']:
+                    callback = lambda rv: self.SetStringItem(i, j, rv)
+                    self.job_queue.put((self.columns[j]['command'], infohash,
+                                        CallbackEvent(method=callback)))
 
-        LnTSizer.Add(self.title_label, 1, wx.EXPAND | wx.CENTRE | wx.TOP | wx.BOTTOM, 3)
-        LnTSizer.Add(self.erase_button, 0, wx.ALIGN_RIGHT | wx.ALL, 2)
-        InfoSizer.Add(LnTSizer, 0, wx.EXPAND)
-        InfoSizer.Add(RnPSizer, 0, wx.EXPAND)
-        TopSizer.Prepend(self.start_stop_button, 0, wx.ALIGN_CENTER | wx.ALL, 2)
-        self.update()
-
-    def update(self):
-        if self.title_label.GetLabel() == "Loading Torrent Info...":
-            self.title_label.update_self("label")
-        self.start_stop_button.update_self("bitmap")
-        self.upload_rate_label.update_self("label")
-        if not self.progress_bar.GetRange():
-            self.progress_bar.update_self("range")
-        if not self.is_complete():
-            self.download_rate_label.update_self("label")
-            self.progress_bar.update_self("value")
-
-    def is_complete(self):
-        v = self.progress_bar.GetValue()
-        r = self.progress_bar.GetRange()
+    def is_complete(self, infohash):
         if r > 0 and v == r:
             return True
         return False
@@ -248,8 +229,7 @@ class UpdateScheduler(threading.Thread):
     
     def run(self):
         while True:
-            self.notebook.GetCurrentPage().update_visible()
-            self.notebook.GetCurrentPage().synchronize()
+            self.notebook.GetCurrentPage().get_list()
             sleep(2)
 
 class LoadTorrentDialog(wx.Dialog):
