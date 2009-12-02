@@ -10,9 +10,21 @@ import os, sys, threading, wx
 from time import sleep
 from ConfigParser import ConfigParser
 from wx.lib import scrolledpanel as sp
-from callbackeventhandler import CallbackEvent, CallbackEventHandler
 from rtdaemon import RTDaemon
-from controls import *
+from Queue import Queue
+from multiqueue import MultiQueue
+
+def format_bytes(bytes, characters=5):
+    output = unit = ""
+    units = ("KB", "MB", "GB", "TB")
+    bytes = float(bytes)
+    for i in range(3):
+        bytes /= 1024
+        if bytes < 1024:
+            unit = units[i]
+            break
+    number = str(int(bytes)).rjust(4)
+    return number + unit
 
 class SettingsManager():
     def __init__(self, defaults={}, config_path=None, load=True):
@@ -83,13 +95,6 @@ class MainWindow(wx.Frame):
             self.job_queue.put((action, argument))
         dlg.Destroy()
 
-    def queue_setup(self, child):
-        ''' Takes an object and attaches the queues and their methods to it, avoids the need for a global queue object '''
-        child.job_queue = self.job_queue
-        child.job_counter = self.job_counter
-        child.init_queues = self.init_queues
-        child.queue_setup = self.queue_setup
-
     def OnExit(self,e):
         self.init_queues()
         self.Destroy()
@@ -98,7 +103,6 @@ class MainWindow(wx.Frame):
 class TorrentsNotebook(wx.Notebook):
     def __init__(self, parent, *args, **kwargs):
         wx.Notebook.__init__(self, parent, *args, **kwargs)
-        parent.queue_setup(self)
         self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.OnPageChange)
         self.views_to_load = ["incomplete", "seeding", "stopped"]
         self.load_views()
@@ -107,7 +111,7 @@ class TorrentsNotebook(wx.Notebook):
 
     def OnPageChange(self, event):
         page = self.GetPage(event.GetSelection())
-        self.init_queues()
+        self.GetTopLevelParent().init_queues()
         if page and hasattr(page, "torrents"):
             page.synchronize()
         event.Skip()
@@ -122,44 +126,55 @@ class ViewPanel(wx.ListView):
     columns = [
         {
             "label": "Name", 
-            "command": "d.name",
+            "command": "d.get_name",
             'width': 300, 
             "default": "Loading torrent data..."
         }, 
         {
             "label": "Progress",
+            "command": "d.get_complete",
             "default": "N/A",
         },
         {
             "label": "Up Rate",
+            "command": "d.get_up_rate",
             "default": "N/A",
+            "formatter": format_bytes,
         },
         {
             "label": "Down Rate",
+            "command": "d.get_down_rate",
             "default": "N/A",
+            "formatter": format_bytes,
         },
         {
             "label": "Ratio",
+            "command": "d.get_ratio",
+            "default": "N/A",
             "width": 45,
-        "default": "N/A", },
-        {
-            "label": "S",
-            "width": 25,
-        "default": "N/A",
+            "default": "N/A", 
         },
         {
-            "label": "L",
+            "label": "S",
+            "command": "d.get_peers_complete",
+            "width": 25,
+            "default": "N/A",
+        },
+        {
+            "label": "P",
+            "command": "d.get_peers_accounted",
             "width": 25,
             "default": "N/A",
         },
     ]
     def __init__(self, parent, title="default"):
         wx.ListView.__init__(self, parent)
-        parent.queue_setup(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.map = {}
         self.title = title
         self.create_columns()
+        self.job_queue = self.GetTopLevelParent().job_queue
+        self.job_counter = self.GetTopLevelParent().job_counter
 
     def create_columns(self):
         i = 0
@@ -170,7 +185,7 @@ class ViewPanel(wx.ListView):
             i += 1
 
     def get_list(self):
-        self.job_queue.put(("download_list", self.title, CallbackEvent(method=self.set_list)))
+        self.job_queue.put(("download_list", self.title, self.set_list))
 
     def set_list(self, hashlist):
         addList = [val for val in hashlist if val not in self.map.values()]
@@ -188,34 +203,34 @@ class ViewPanel(wx.ListView):
             self.job_counter.changecount(infohash)
         self.InsertStringItem(0, 'If you are seeing this, an error has occured ;)')
         self.SetItemData(0, id)
-        for i in range(len(self.columns) - 1):
+        for i in range(len(self.columns)):
             self.SetStringItem(0, i, self.columns[i]['default'])
 
     def update_list(self):
         for i in range(self.GetItemCount()):
-            item = self.GetItem(i)
-            infohash = self.map[item.GetData()]
-            for j in range(len(self.columns) - 1):
-                if self.GetItem(i, j).GetText() == self.columns[j]['default']:
-                    callback = lambda rv: self.SetStringItem(i, j, rv)
+            infohash = self.map[self.GetItemData(i)]
+            for j in range(len(self.columns)):
+                item = self.GetItem(i, j)
+                if item.GetText() == self.columns[j]['default']:
                     self.job_queue.put((self.columns[j]['command'], infohash,
-                                        CallbackEvent(method=callback)))
+                                        self.make_callback(i, j)))
 
+    def make_callback(self, i, j):
+        def callback(rv): 
+            if "formatter" in self.columns[j]:
+                rv = self.columns[j]['formatter'](rv)
+            self.SetStringItem(i, j, str(rv))
+        return callback
+                
     def is_complete(self, infohash):
         if r > 0 and v == r:
             return True
         return False
 
-    def start_stop(self, button):
-        if button.GetBitmapLabel() == ControlIcons[0]:
-            job_queue.put(("d.start", self.infohash))
-        elif button.GetBitmapLabel() == ControlIcons[1]:
-            job_queue.put(("d.stop", self.infohash))
-
     def on_erase(self, e):
         dlg = wx.MessageDialog(self, "Are you sure you want to remove this torrent?", "Delete torrent", wx.OK | wx.CANCEL | wx.ICON_QUESTION)
         if dlg.ShowModal() == wx.ID_OK:
-            job_queue.put(("d.erase", self.infohash))
+            self.job_queue.put(("d.erase", self.infohash))
             sizer = self.GetParent().GetSizer()
             self.Destroy()
             sizer.Layout()
@@ -318,7 +333,7 @@ class SettingsPanel(sp.ScrolledPanel):
             new_settings[name] = self.settings[name]["ctrl"].GetValue()
         print "Saving Settings:", new_settings
         self.settings_manager.save(new_settings)
-        frame = self.GetGrandParent()
+        frame = self.GetTopLevelParent()
         frame.init_queues()
         frame.daemon_thread.open(self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
         
@@ -328,18 +343,6 @@ class SettingsPanel(sp.ScrolledPanel):
         return True
 
     synchronize = update_visible
-
-def format_bytes(bytes, characters=5):
-    output = unit = ""
-    units = ("KB", "MB", "GB", "TB")
-    bytes = float(bytes)
-    for i in range(3):
-        bytes /= 1024
-        if bytes < 1024:
-            unit = units[i]
-            break
-    number = str(int(bytes)).rjust(4)
-    return number + unit
 
 def fire_it_up():
     job_counter = MultiQueue()
@@ -352,21 +355,18 @@ def fire_it_up():
 
     settings_manager = frame.notebook.settings_panel.settings_manager
 
-    callback_event_handler = CallbackEventHandler("infohash", job_counter.dec)
-    daemon_thread = RTDaemon(job_queue, callback_event_handler,
-                             settings_manager.settings.get("DEFAULT", "rTorrent URL"))
+    daemon_thread = RTDaemon(job_queue, settings_manager.settings.get("DEFAULT", "rTorrent URL"))
 
     daemon_thread.start()
     # Do this so that save_settings can stop this thread and start a new one
     frame.daemon_thread = daemon_thread
 
-    global Icons, ControlIcons
-    Icons = {}
-    Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
-    Icons['pause'] = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR)
-    Icons['add'] = wx.ArtProvider.GetBitmap(wx.ART_NEW, wx.ART_TOOLBAR)
-    Icons['remove'] = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_FRAME_ICON)
-    ControlIcons = (Icons['play'], Icons['pause'])
+#    Icons = {}
+#    Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
+#    Icons['pause'] = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR)
+#    Icons['add'] = wx.ArtProvider.GetBitmap(wx.ART_NEW, wx.ART_TOOLBAR)
+#    Icons['remove'] = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_FRAME_ICON)
+#    ControlIcons = (Icons['play'], Icons['pause'])
 
     app.MainLoop()
 

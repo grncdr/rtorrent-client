@@ -1,13 +1,11 @@
 import threading
-from wx import PostEvent
 from xmlrpclib import ServerProxy, Binary
 class RTDaemon(threading.Thread):
-    def __init__(self, queue=None, cbhandler=None, url=None):
+    def __init__(self, queue=None, url=None):
         threading.Thread.__init__(self)
         self.setDaemon(True)
         self.queue = queue
         self.open(url)
-        self.callback_event_handler = cbhandler
 
     def open(self, url):
         self.proxy = ServerProxy(url)
@@ -18,7 +16,7 @@ class RTDaemon(threading.Thread):
             if self.remote_request(job): self.queue.task_done()
 
     def remote_request(self,job):
-        param_list = ("command", "arguments", "event")
+        param_list = ("command", "argument", "callback")
         i = 0
         p = {}
         for param in job:
@@ -27,15 +25,16 @@ class RTDaemon(threading.Thread):
             i+=1
 
         try:
-            response = getattr(self.proxy, p["command"])(p["arguments"])
+            response = getattr(self.proxy, p["command"])(p["argument"])
         except:
             print "\n***Remote call failed***\nproxy:",self.proxy,"\ncall:",job[0], job[1]
             self.queue.put(job)
             return True
 
-        if "event" in p.keys():
-            p["event"].response = response
-            PostEvent(self.callback_event_handler, p["event"])
+        if "callback" in p.keys():
+            print response
+            p["callback"](response)
+
         return True
 
     def send_file(self, filename, start=False):
