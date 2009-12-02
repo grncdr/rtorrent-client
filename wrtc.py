@@ -17,16 +17,13 @@ from multiqueue import MultiQueue
 NAME_OF_THIS_APP = 'wrTc'
 
 def format_bytes(bytes, characters=5):
-    output = unit = ""
-    units = ("KB", "MB", "GB", "TB")
+    units = ("B", "KB", "MB", "GB", "TB")
     bytes = float(bytes)
-    for i in range(3):
-        bytes /= 1024
+    for unit in units:
         if bytes < 1024:
-            unit = units[i]
             break
-    number = str(int(bytes)).rjust(4)
-    return number + unit
+        bytes /= 1024
+    return str(round(bytes,2))+unit
 
 class SettingsManager():
     def __init__(self, main_window, defaults={}, config_path=None, load=True):
@@ -207,6 +204,7 @@ class ViewPanel(wx.ListView):
         {
             "label": "Ratio",
             "command": "d.get_ratio",
+            "formatter": lambda p: str(p)+"%",
             "default": "N/A",
             "width": 45,
             "default": "N/A", 
