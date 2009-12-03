@@ -10,7 +10,7 @@ import os, sys, threading, wx
 from time import sleep
 from ConfigParser import ConfigParser
 from wx.lib import scrolledpanel as sp
-from rtdaemon import RTDaemon
+from rtdaemon import rTDaemon
 from Queue import Queue
 from multiqueue import MultiQueue
 
@@ -26,7 +26,7 @@ def format_bytes(bytes, characters=5):
     return str(round(bytes,2))+unit
 
 class SettingsManager():
-    def __init__(self, main_window, defaults={}, config_path=None, load=True):
+    def __init__(self, main_window, defaults={'rtorrent url': 'http://localhost/RPC2'}, config_path=None, load=True):
         self.main_window = main_window
         self.settings = ConfigParser(defaults)
         if load:
@@ -41,18 +41,13 @@ class SettingsManager():
             config_path = os.path.expanduser("~/.config/wrtc.rc")
         return config_path
 
-    def save(self, settings):
-        ''' Settings should be a simple key value dictionary '''
-        for key in settings.keys():
-            self.settings.set("DEFAULT", key, settings[key])
-        self.settings.write(open(self.config_path,'w'))
-
     def show_dialog(self, evt):
-        dlg = wx.Dialog(self.main_window, title="Settings")
+        self.dlg = wx.Dialog(self.main_window, title="Settings")
         sizer = wx.FlexGridSizer(4,2,0,10)
         sizer.SetFlexibleDirection(wx.HORIZONTAL)
         sizer.AddGrowableCol(1)
-        dlg.SetSizer(sizer)
+        self.dlg.SetSizer(sizer)
+        self.controls = [] 
         for item in self.settings.items("DEFAULT"):
             k = item[0]
             try:
@@ -61,20 +56,29 @@ class SettingsManager():
                 v = self.settings.get("DEFAULT", k)
             stype = type(v)
             if stype == type(False):
-                control = wx.CheckBox(dlg)
+                control = wx.CheckBox(self.dlg)
                 control.SetValue(v)
             elif stype == type('f') or stype == type(u'f') :
-                control = wx.TextCtrl(dlg, value=v)
+                control = wx.TextCtrl(self.dlg, value=v)
             else:
                 continue
-            label = wx.StaticText(dlg, label=k.title())
+            label = wx.StaticText(self.dlg, label=k.title())
+            self.controls.append((k, control,))
             sizer.Add(label, flag=wx.EXPAND|wx.ALL, border=10)
             sizer.Add(control, flag=wx.EXPAND|wx.ALL, border=10)
-        sizer.Add(wx.StaticText(dlg, label=""))
-        save = wx.Button(dlg, id=wx.ID_OK, label="Save")
-        save.Bind(wx.EVT_BUTTON, self.save)
-        sizer.Add(save, 0, wx.ALIGN_RIGHT | wx.ALL, border=10)
-        dlg.ShowModal()
+        sizer.Add(wx.StaticText(self.dlg, label=""))
+        save_button = wx.Button(self.dlg, id=wx.ID_OK, label="Save")
+        save_button.Bind(wx.EVT_BUTTON, self.save)
+        sizer.Add(save_button, 0, wx.ALIGN_RIGHT | wx.ALL, border=10)
+        self.dlg.ShowModal()
+
+    def save(self, evt):
+        for setting, control in self.controls:
+            self.settings.set("DEFAULT", setting, str(control.GetValue()))
+        with open(self.config_path,'wb') as fh:
+            self.settings.write(fh)
+        self.main_window.connect_to_daemon()
+        self.dlg.Close()
 
 class MainWindow(wx.Frame):
     def __init__(self, parent, id, title, job_queue, job_counter):
@@ -82,6 +86,7 @@ class MainWindow(wx.Frame):
         self.job_queue = job_queue
         self.job_counter = job_counter
         self.settings_manager = SettingsManager(self)
+        self.connect_to_daemon()
 
         self.menu_bar = wx.MenuBar()
         self.help_menu = wx.Menu()
@@ -107,6 +112,10 @@ class MainWindow(wx.Frame):
         self.Show()
         self.refresher_thread = UpdateScheduler(self.notebook)
         self.refresher_thread.start()
+
+    def connect_to_daemon(self):
+        self.daemon_thread = rTDaemon(self.job_queue, self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
+        self.daemon_thread.start()
 
     def on_about_request(self, evt):
         dlg = wx.MessageDialog(self, "wxPython rTorrent client", NAME_OF_THIS_APP, wx.OK | wx.ICON_INFORMATION)
@@ -350,19 +359,9 @@ class LoadTorrentDialog(wx.Dialog):
 def fire_it_up():
     job_counter = MultiQueue()
     job_queue = Queue()
-    
-
     app = wx.PySimpleApp()
     frame = MainWindow(None, wx.ID_ANY, "wrTc - wxPython rTorrent client", 
                        job_queue, job_counter)
-
-
-
-    daemon_thread = RTDaemon(job_queue, frame.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
-
-    daemon_thread.start()
-    # Do this so that save_settings can stop this thread and start a new one
-    frame.daemon_thread = daemon_thread
 
 #    Icons = {}
 #    Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
