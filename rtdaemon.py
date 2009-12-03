@@ -32,7 +32,6 @@ class rTDaemon(threading.Thread):
             return True
 
         if "callback" in p.keys():
-            print response
             p["callback"](response)
 
         return True
