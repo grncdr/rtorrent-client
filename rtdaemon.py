@@ -1,6 +1,6 @@
 import threading
 from xmlrpclib import ServerProxy, Binary
-class RTDaemon(threading.Thread):
+class rTDaemon(threading.Thread):
     def __init__(self, queue=None, url=None):
         threading.Thread.__init__(self)
         self.setDaemon(True)
@@ -27,7 +27,7 @@ class RTDaemon(threading.Thread):
         try:
             response = getattr(self.proxy, p["command"])(p["argument"])
         except:
-            print "\n***Remote call failed***\nproxy:",self.proxy,"\ncall:",job[0], job[1]
+            #print "\n***Remote call failed***\nproxy:",self.proxy,"\ncall:",job[0], job[1]
             self.queue.put(job)
             return True
 
