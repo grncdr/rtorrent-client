@@ -89,25 +89,26 @@ class MainWindow(wx.Frame):
         self.connect_to_daemon()
 
         self.menu_bar = wx.MenuBar()
+        if os.name != 'darwin':
+            self.file_menu = wx.Menu()
+            self.file_menu.Append(wx.ID_OPEN, "Add &Torrent")
+            self.file_menu.Append(wx.ID_PREFERENCES, "&Preferences")
+            self.file_menu.Append(wx.ID_EXIT, "&Quit")
+            self.menu_bar.Append(self.file_menu, "&File")
+
         self.help_menu = wx.Menu()
         self.help_menu.Append(wx.ID_ABOUT, "&About "+NAME_OF_THIS_APP)
         self.menu_bar.Append(self.help_menu, "&Help")
+
         self.SetMenuBar(self.menu_bar)
         self.Bind(wx.EVT_MENU, self.on_about_request, id=wx.ID_ABOUT)
-
-        tool_bar = wx.BoxSizer(wx.HORIZONTAL)
-        add_torrent_button = wx.Button(self,label="Add torrent")
-        add_torrent_button.Bind(wx.EVT_BUTTON, self.load_torrent)
-        tool_bar.Add(add_torrent_button, 0, wx.ALIGN_RIGHT, 5)
-
-        settings_button = wx.Button(self,label="Settings")
-        settings_button.Bind(wx.EVT_BUTTON, self.settings_manager.show_dialog)
-        tool_bar.Add(settings_button, 0, wx.ALIGN_RIGHT, 5)
+        self.Bind(wx.EVT_MENU, self.settings_manager.show_dialog, id=wx.ID_PREFERENCES)
+        self.Bind(wx.EVT_MENU, self.load_torrent, id=wx.ID_OPEN)
+        self.Bind(wx.EVT_MENU, self.Close, id=wx.ID_EXIT)
 
         self.notebook = TorrentsNotebook(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 10)
-        main_sizer.Add(tool_bar, 0, wx.ALL | wx.ALIGN_RIGHT, 10)
         self.SetSizer(main_sizer)
         self.Show()
         self.refresher_thread = UpdateScheduler(self.notebook)
