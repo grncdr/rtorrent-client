@@ -1,38 +1,55 @@
 import threading
-from xmlrpclib import ServerProxy, Binary
+from xmlrpclib import ServerProxy, Binary, ProtocolError
+import time
 class rTDaemon(threading.Thread):
-    def __init__(self, queue=None, url=None):
+    def __init__(self, queue, url):
         threading.Thread.__init__(self)
+        self.connected = False
         self.setDaemon(True)
-        self.queue = queue
+        self.jobs = queue
         self.open(url)
 
     def open(self, url):
+        self.url = url
+        self.connected = False
         self.proxy = ServerProxy(url)
+        self.remote_request(('system.client_version', '', self._set_connected))
+
+    def _set_connected(self, version):
+        print "Connected to rtorrent version", version
+        self.started = int(time.time())
+        self.connected = True
 
     def run(self):
         while True:
-            job = self.queue.get()
-            if self.remote_request(job): self.queue.task_done()
+            if not self.connected:
+                self.open()
+                time.sleep(5)
+            else:
+                job = self.jobs.get()
+                if job[1] == 1 or int(time.time()) % job[0] == 0:
+                    if self.remote_request(job[1:]): 
+                        self.jobs.task_done()
+                else:
+                    self.jobs.put(job)
+
 
     def remote_request(self,job):
-        param_list = ("command", "argument", "callback")
-        i = 0
-        p = {}
-        for param in job:
-            if param:
-                p[param_list[i]] = param
-            i+=1
+        if len(job) == 3:
+            command, argument, callback = job
+        elif len(job) == 2:
+            callback = False
+            command, argument = job
 
         try:
-            response = getattr(self.proxy, p["command"])(p["argument"])
-        except:
-            #print "\n***Remote call failed***\nproxy:",self.proxy,"\ncall:",job[0], job[1]
-            self.queue.put(job)
+            response = getattr(self.proxy, command)(argument)
+        except ProtocolError as e:
+            print e.errcode, "-", e.url.split('@').pop(), '-', command
+            self.jobs.put(job)
             return True
 
-        if "callback" in p.keys():
-            p["callback"](response)
+        if callback:
+            callback(response)
 
         return True
 
@@ -43,10 +60,10 @@ class rTDaemon(threading.Thread):
         torrent_file = open(filename,'rb')
         torrent_data = Binary(torrent_file.read()+torrent_file.read())
         torrent_file.close()
-        self.queue.put((action, torrent_data))
+        self.jobs.put((1, action, torrent_data))
 
     def send_url(self, url, start=False):
         action = "load"
         if start:
             action += "_start"
-        self.queue.put((action, url))
+        self.jobs.put((1, action, url))

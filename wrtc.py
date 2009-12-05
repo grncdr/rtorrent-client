@@ -77,46 +77,48 @@ class SettingsManager():
             self.settings.set("DEFAULT", setting, str(control.GetValue()))
         with open(self.config_path,'wb') as fh:
             self.settings.write(fh)
-        self.main_window.connect_to_daemon()
+        self.main_window.daemon_thread.open(self.settings.get("DEFAULT",'rTorrent URL'))
         self.dlg.Close()
 
 class MainWindow(wx.Frame):
-    def __init__(self, parent, id, title, job_queue, job_counter):
+    def __init__(self, parent, id, title):
         wx.Frame.__init__(self, parent, id, title, size=(600,600))
-        self.job_queue = job_queue
-        self.job_counter = job_counter
+        self.job_counter = MultiQueue()
+        self.job_queue = Queue()
         self.settings_manager = SettingsManager(self)
-        self.connect_to_daemon()
+        self.daemon_thread = rTDaemon(self.job_queue, self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
+        self.daemon_thread.start()
+        self.create_interface()
+        self.Show()
+        self.refresher_thread = UpdateScheduler(self.notebook)
+        self.refresher_thread.start()
 
+    def create_interface(self):
         self.menu_bar = wx.MenuBar()
-        if os.name != 'darwin':
-            self.file_menu = wx.Menu()
-            self.file_menu.Append(wx.ID_OPEN, "Add &Torrent")
-            self.file_menu.Append(wx.ID_PREFERENCES, "&Preferences")
-            self.file_menu.Append(wx.ID_EXIT, "&Quit")
-            self.menu_bar.Append(self.file_menu, "&File")
+
+        self.file_menu = wx.Menu()
+        self.file_menu.Append(wx.ID_OPEN, "Add &Torrent")
+        self.Bind(wx.EVT_MENU, self.load_torrent, id=wx.ID_OPEN)
+        self.file_menu.Append(wx.ID_PREFERENCES, "&Preferences")
+        self.Bind(wx.EVT_MENU, self.settings_manager.show_dialog, id=wx.ID_PREFERENCES)
+        self.file_menu.Append(wx.ID_EXIT, "&Quit")
+        self.Bind(wx.EVT_MENU, self.quit, id=wx.ID_EXIT)
+        self.menu_bar.Append(self.file_menu, "&File")
 
         self.help_menu = wx.Menu()
         self.help_menu.Append(wx.ID_ABOUT, "&About "+NAME_OF_THIS_APP)
+        self.Bind(wx.EVT_MENU, self.on_about_request, id=wx.ID_ABOUT)
         self.menu_bar.Append(self.help_menu, "&Help")
 
         self.SetMenuBar(self.menu_bar)
-        self.Bind(wx.EVT_MENU, self.on_about_request, id=wx.ID_ABOUT)
-        self.Bind(wx.EVT_MENU, self.settings_manager.show_dialog, id=wx.ID_PREFERENCES)
-        self.Bind(wx.EVT_MENU, self.load_torrent, id=wx.ID_OPEN)
-        self.Bind(wx.EVT_MENU, self.Close, id=wx.ID_EXIT)
 
         self.notebook = TorrentsNotebook(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 10)
         self.SetSizer(main_sizer)
-        self.Show()
-        self.refresher_thread = UpdateScheduler(self.notebook)
-        self.refresher_thread.start()
 
-    def connect_to_daemon(self):
-        self.daemon_thread = rTDaemon(self.job_queue, self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
-        self.daemon_thread.start()
+    def quit(self, evt):
+        self.Destroy()
 
     def on_about_request(self, evt):
         dlg = wx.MessageDialog(self, "wxPython rTorrent client", NAME_OF_THIS_APP, wx.OK | wx.ICON_INFORMATION)
@@ -146,10 +148,11 @@ class MainWindow(wx.Frame):
                 argument = dlg.url.GetValue()
             if dlg.start_immediate.GetValue():
                 action += "_start"
-            self.job_queue.put((action, argument))
+            self.job_queue.put((1, action, argument))
         dlg.Destroy()
 
     def OnExit(self,e):
+        del(self.daemon_thread)
         self.init_queues()
         self.Destroy()
 
@@ -175,7 +178,7 @@ class TorrentsNotebook(wx.Notebook):
 
 
 class ViewPanel(wx.ListView):
-    columns = [
+    _columns = [
         {
             "label": "Name", 
             "command": "d.get_name",
@@ -243,14 +246,14 @@ class ViewPanel(wx.ListView):
 
     def create_columns(self):
         i = 0
-        for column in self.columns:
+        for column in self._columns:
             self.InsertColumn(i,column['label'])
             if 'width' in column:
                 self.SetColumnWidth(i,column['width'])
             i += 1
 
     def get_list(self):
-        self.job_queue.put(("download_list", self.title, self.set_list))
+        self.job_queue.put((8, "download_list", self.title, self.set_list))
 
     def set_list(self, hashlist):
         addList = [val for val in hashlist if val not in self.map.values()]
@@ -268,22 +271,22 @@ class ViewPanel(wx.ListView):
             self.job_counter.changecount(infohash)
         self.InsertStringItem(0, 'If you are seeing this, an error has occured ;)')
         self.SetItemData(0, id)
-        for i in range(len(self.columns)):
-            self.SetStringItem(0, i, self.columns[i]['default'])
+        for i in range(len(self._columns)):
+            self.SetStringItem(0, i, self._columns[i]['default'])
 
     def update_list(self):
         for i in range(self.GetItemCount()):
             infohash = self.map[self.GetItemData(i)]
-            for j in range(len(self.columns)):
+            for j in range(len(self._columns)):
                 item = self.GetItem(i, j)
-                if item.GetText() == self.columns[j]['default']:
-                    self.job_queue.put((self.columns[j]['command'], infohash,
+                if item.GetText() == self._columns[j]['default']:
+                    self.job_queue.put((3, self._columns[j]['command'], infohash,
                                         self.make_callback(i, j)))
 
     def make_callback(self, i, j):
         def callback(rv): 
-            if "formatter" in self.columns[j]:
-                rv = self.columns[j]['formatter'](rv)
+            if "formatter" in self._columns[j]:
+                rv = self._columns[j]['formatter'](rv)
             self.SetStringItem(i, j, str(rv))
         return callback
                 
@@ -295,7 +298,7 @@ class ViewPanel(wx.ListView):
     def on_erase(self, e):
         dlg = wx.MessageDialog(self, "Are you sure you want to remove this torrent?", "Delete torrent", wx.OK | wx.CANCEL | wx.ICON_QUESTION)
         if dlg.ShowModal() == wx.ID_OK:
-            self.job_queue.put(("d.erase", self.infohash))
+            self.job_queue.put((1, "d.erase", self.infohash))
             sizer = self.GetParent().GetSizer()
             self.Destroy()
             sizer.Layout()
@@ -358,11 +361,8 @@ class LoadTorrentDialog(wx.Dialog):
         dlg.Destroy()
 
 def fire_it_up():
-    job_counter = MultiQueue()
-    job_queue = Queue()
     app = wx.PySimpleApp()
-    frame = MainWindow(None, wx.ID_ANY, "wrTc - wxPython rTorrent client", 
-                       job_queue, job_counter)
+    frame = MainWindow(None, wx.ID_ANY, NAME_OF_THIS_APP+" - wxPython rTorrent client") 
 
 #    Icons = {}
 #    Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
