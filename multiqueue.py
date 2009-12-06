@@ -18,7 +18,10 @@ class MultiQueue(object):
         return self.get(i)
 
     def keys(self):
-        return self._lists.keys()
+        self.lock.acquire()
+        keys = self._lists.keys()
+        self.lock.release()
+        return keys
 
     def put(self, l, job):
         self.lock.acquire()
