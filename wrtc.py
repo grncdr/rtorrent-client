@@ -6,8 +6,7 @@ Author: Stephen Sugden (grncdr)
 Description: This is a little app that connects to and monitors a remote rTorrent via xmlrpc. It can also upload local torrent files to a remote machine
 '''
 
-import os, sys, threading, wx
-from time import sleep
+import os, sys, threading, wx, time
 from ConfigParser import ConfigParser
 from wx.lib import scrolledpanel as sp
 from rtdaemon import rTDaemon
@@ -83,7 +82,6 @@ class SettingsManager():
 class MainWindow(wx.Frame):
     def __init__(self, parent, id, title):
         wx.Frame.__init__(self, parent, id, title, size=(600,600))
-        self.job_counter = MultiQueue()
         self.job_queue = Queue()
         self.settings_manager = SettingsManager(self)
         self.daemon_thread = rTDaemon(self.job_queue, self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
@@ -124,17 +122,6 @@ class MainWindow(wx.Frame):
         dlg = wx.MessageDialog(self, "wxPython rTorrent client", NAME_OF_THIS_APP, wx.OK | wx.ICON_INFORMATION)
         dlg.ShowModal()
 
-    def init_queues(self):
-        try:
-            self.job_queue.mutex.acquire()
-            self.job_queue.queue.clear()
-            self.job_queue.mutex.release()
-        except:
-            print("Ah fuck")
-            sleep(10)
-            quit()
-        self.job_counter.__init__()
-
     def load_torrent(self,e=None,filename=None):
         dlg = LoadTorrentDialog()
         if filename:
@@ -153,24 +140,15 @@ class MainWindow(wx.Frame):
 
     def OnExit(self,e):
         del(self.daemon_thread)
-        self.init_queues()
         self.Destroy()
 
 
 class TorrentsNotebook(wx.Notebook):
     def __init__(self, parent, *args, **kwargs):
         wx.Notebook.__init__(self, parent, *args, **kwargs)
-        self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.OnPageChange)
         self.views_to_load = ["incomplete", "seeding", "stopped"]
         self.load_views()
 
-    def OnPageChange(self, event):
-        page = self.GetPage(event.GetSelection())
-        self.GetTopLevelParent().init_queues()
-        if page and hasattr(page, "torrents"):
-            page.synchronize()
-        event.Skip()
-        
     def load_views(self):
         self.DeleteAllPages()
         for view in self.views_to_load:
@@ -187,7 +165,8 @@ class ViewPanel(wx.ListView):
         }, 
         {
             "label": "Progress",
-            "command": "d.get_complete",
+            "command": "d.get_bytes_done",
+            "formatter": format_bytes,
             "default": "N/A",
         },
         {
@@ -241,8 +220,15 @@ class ViewPanel(wx.ListView):
         self.map = {}
         self.title = title
         self.create_columns()
-        self.job_queue = self.GetTopLevelParent().job_queue
-        self.job_counter = self.GetTopLevelParent().job_counter
+        self.joblist = MultiQueue()
+        #self.jobs = {0: [("download_list", self.title, self.set_list)]}
+        self.joblist.put(0, ("download_list", self.title, self.set_list))
+        self.joblist.put(5, ("download_list", self.title, self.set_list))
+        #self.jobs.__len__ = self.fake_length
+        print self, self.joblist
+
+    def __repr__(self):
+        return "rTorrent View (wx.ListView) - "+self.title.capitalize()
 
     def create_columns(self):
         i = 0
@@ -252,68 +238,72 @@ class ViewPanel(wx.ListView):
                 self.SetColumnWidth(i,column['width'])
             i += 1
 
-    def get_list(self):
-        self.job_queue.put((8, "download_list", self.title, self.set_list))
-
     def set_list(self, hashlist):
         addList = [val for val in hashlist if val not in self.map.values()]
-        rmList = [val for val in self.map.values() if val not in hashlist]
-        for infohash in rmList:
-            self.DeleteItem(self.FindItemData([(v, k) for (k, v) in self.map][infohash]))
+        rmList = [id for (id, hash) in self.map.items() if hash not in hashlist] 
+        for id in rmList:
+            self.DeleteItem(self.FindItemData(id))
+            self.joblist.remove(lambda job: job[1] == self.map[id])
+            del(self.map[id])
         for infohash in addList:
             self.add_torrent(infohash)
-        self.update_list()
         
     def add_torrent(self, infohash):
-        id = wx.NewId()
-        self.map[id] = infohash
-        if infohash not in self.job_counter:
-            self.job_counter.changecount(infohash)
+        tag = wx.NewId()
+        self.map[tag] = infohash
         self.InsertStringItem(0, 'If you are seeing this, an error has occured ;)')
-        self.SetItemData(0, id)
-        for i in range(len(self._columns)):
-            self.SetStringItem(0, i, self._columns[i]['default'])
+        self.SetItemData(0, tag)
+        for (i, c) in zip(range(len(self._columns)), self._columns):
+            self.SetStringItem(0, i, c['default'])
+            if 'frequency' in c:
+                f = c['frequency']
+            else:
+                f = 3
+            self.joblist.put(f, (c['command'], infohash, self.make_callback(tag, i)))
 
-    def update_list(self):
-        for i in range(self.GetItemCount()):
-            infohash = self.map[self.GetItemData(i)]
-            for j in range(len(self._columns)):
-                item = self.GetItem(i, j)
-                if item.GetText() == self._columns[j]['default']:
-                    self.job_queue.put((3, self._columns[j]['command'], infohash,
-                                        self.make_callback(i, j)))
-
-    def make_callback(self, i, j):
+    def make_callback(self, tag, col):
         def callback(rv): 
-            if "formatter" in self._columns[j]:
-                rv = self._columns[j]['formatter'](rv)
-            self.SetStringItem(i, j, str(rv))
+            row = self.FindItemData(0, tag)
+            if "formatter" in self._columns[col]:
+                rv = self._columns[col]['formatter'](rv)
+            self.SetStringItem(row, col, str(rv))
         return callback
                 
-    def is_complete(self, infohash):
-        if r > 0 and v == r:
-            return True
-        return False
-
     def on_erase(self, e):
         dlg = wx.MessageDialog(self, "Are you sure you want to remove this torrent?", "Delete torrent", wx.OK | wx.CANCEL | wx.ICON_QUESTION)
         if dlg.ShowModal() == wx.ID_OK:
-            self.job_queue.put((1, "d.erase", self.infohash))
-            sizer = self.GetParent().GetSizer()
-            self.Destroy()
-            sizer.Layout()
+            print 'Not implemented'
         dlg.Destroy()
 
 class UpdateScheduler(threading.Thread):
     def __init__(self, notebook):
         threading.Thread.__init__(self)
-        self.setDaemon(True)
         self.notebook = notebook
+        self.remote_queue = notebook.GetTopLevelParent().job_queue
     
     def run(self):
+        then = 0
         while True:
-            self.notebook.GetCurrentPage().get_list()
-            sleep(2)
+            job_list = self.notebook.GetCurrentPage().joblist
+            immediate = job_list.get(0, clear=True)
+            self.add_jobs(immediate)
+            if len(job_list) == 0:
+                print "No jobs for", self.notebook.GetCurrentPage()
+                print self.notebook.GetCurrentPage().jobs
+                time.sleep(1)
+                continue
+            now = int(time.time())
+            if then == now:
+                continue
+            for i in job_list.keys():
+                if not (now % i):
+                    list = job_list.get(i)
+                    self.add_jobs(list)
+            then = now
+
+    def add_jobs(self, list):
+        for job in list:
+            self.remote_queue.put(job)
 
 class LoadTorrentDialog(wx.Dialog):
     def __init__(self):

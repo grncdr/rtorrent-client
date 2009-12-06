@@ -23,16 +23,14 @@ class rTDaemon(threading.Thread):
     def run(self):
         while True:
             if not self.connected:
-                self.open()
+                self.open(self.url)
                 time.sleep(5)
             else:
                 job = self.jobs.get()
-                if job[1] == 1 or int(time.time()) % job[0] == 0:
-                    if self.remote_request(job[1:]): 
-                        self.jobs.task_done()
+                if self.remote_request(job): 
+                    self.jobs.task_done()
                 else:
                     self.jobs.put(job)
-
 
     def remote_request(self,job):
         if len(job) == 3:
@@ -40,17 +38,16 @@ class rTDaemon(threading.Thread):
         elif len(job) == 2:
             callback = False
             command, argument = job
-
         try:
             response = getattr(self.proxy, command)(argument)
         except ProtocolError as e:
             print e.errcode, "-", e.url.split('@').pop(), '-', command
-            self.jobs.put(job)
-            return True
-
+            return False
+        except:
+            print "WTF!", job
+            return False
         if callback:
             callback(response)
-
         return True
 
     def send_file(self, filename, start=False):
