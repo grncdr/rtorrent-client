@@ -255,9 +255,9 @@ class ViewPanel(wx.ListView):
 
     def set_list(self, hashlist):
         addList = [val for val in hashlist if val not in self.map.values()]
-        rmList = [id for (id, hash) in self.map.items() if hash not in hashlist] 
+        rmList = [tag for (tag, hash) in self.map.items() if hash not in hashlist] 
         for id in rmList:
-            self.DeleteItem(self.FindItemData(id))
+            self.DeleteItem(self.FindItemData(-1, id))
             self.joblist.remove(lambda job: job[1] == self.map[id])
             del(self.map[id])
         for infohash in addList:
@@ -278,10 +278,12 @@ class ViewPanel(wx.ListView):
 
     def make_callback(self, tag, col):
         def callback(rv): 
-            row = self.FindItemData(0, tag)
+            row = self.FindItemData(-1, tag)
             if "formatter" in self._columns[col]:
                 rv = self._columns[col]['formatter'](rv)
-            self.SetStringItem(row, col, str(rv))
+            else:
+                rv = str(rv)
+            self.SetStringItem(row, col, rv)
         return callback
                 
     def on_erase(self, e):
