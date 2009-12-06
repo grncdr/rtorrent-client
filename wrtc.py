@@ -8,7 +8,7 @@ Description: This is a little app that connects to and monitors a remote rTorren
 
 import os, sys, threading, wx, time
 from ConfigParser import ConfigParser
-from wx.lib import scrolledpanel as sp
+from wx.lib.mixins.listctrl import ListCtrlAutoWidthMixin
 from rtdaemon import rTDaemon
 from collections import deque
 from multiqueue import MultiQueue
@@ -169,7 +169,7 @@ class TorrentsNotebook(wx.Notebook):
         queue.clear()
         queue.append(('download_list', page.title, page.set_list ))
 
-class ViewPanel(wx.ListView):
+class ViewPanel(ListCtrlAutoWidthMixin, wx.ListView):
     _columns = [
         {
             "label": "Name", 
@@ -235,6 +235,8 @@ class ViewPanel(wx.ListView):
     ]
     def __init__(self, parent, title="default"):
         wx.ListView.__init__(self, parent)
+        ListCtrlAutoWidthMixin.__init__(self)
+        self.setResizeColumn(0)
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.map = {}
         self.title = title
