@@ -127,7 +127,7 @@ class MainWindow(wx.Frame):
         dlg.ShowModal()
 
     def load_torrent(self,e=None,filename=None):
-        dlg = LoadTorrentDialog()
+        dlg = LoadTorrentDialog(self)
         if filename:
             dlg.filepath.SetValue(filename)
         if dlg.ShowModal() == wx.ID_OK:
@@ -327,8 +327,10 @@ class UpdateScheduler(threading.Thread):
             self.remote_queue.append(job)
 
 class LoadTorrentDialog(wx.Dialog):
-    def __init__(self):
+    def __init__(self, parent_window):
+        from browser import PathBrowser
         wx.Dialog.__init__(self, None, wx.ID_ANY, "Load torrent")
+        self.browser = PathBrowser(parent_window)
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.SetSizer(sizer)
         padding = 3
