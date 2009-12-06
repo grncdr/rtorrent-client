@@ -238,7 +238,7 @@ class ViewPanel(ListCtrlAutoWidthMixin, wx.ListView):
         ListCtrlAutoWidthMixin.__init__(self)
         self.setResizeColumn(0)
         sizer = wx.BoxSizer(wx.VERTICAL)
-        self.map = {}
+        self.tag_map = {}
         self.title = title
         self.create_columns()
         self.joblist = MultiQueue()
@@ -256,18 +256,18 @@ class ViewPanel(ListCtrlAutoWidthMixin, wx.ListView):
             i += 1
 
     def set_list(self, hashlist):
-        addList = [val for val in hashlist if val not in self.map.values()]
-        rmList = [tag for (tag, hash) in self.map.items() if hash not in hashlist] 
+        addList = [val for val in hashlist if val not in self.tag_map.values()]
+        rmList = [tag for (tag, hash) in self.tag_map.items() if hash not in hashlist] 
         for id in rmList:
             self.DeleteItem(self.FindItemData(-1, id))
-            self.joblist.remove(lambda job: job[1] == self.map[id])
-            del(self.map[id])
+            self.joblist.remove(lambda job: job[1] == self.tag_map[id])
+            del(self.tag_map[id])
         for infohash in addList:
             self.add_torrent(infohash)
         
     def add_torrent(self, infohash):
         tag = wx.NewId()
-        self.map[tag] = infohash
+        self.tag_map[tag] = infohash
         self.InsertStringItem(0, 'If you are seeing this, an error has occured ;)')
         self.SetItemData(0, tag)
         for (i, c) in zip(range(len(self._columns)), self._columns):
