@@ -25,7 +25,7 @@ def format_bytes(bytes, characters=5):
     return str(round(bytes,2))+unit
 
 class SettingsManager():
-    def __init__(self, main_window, defaults={'rtorrent url': 'http://localhost/RPC2'}, config_path=None, load=True):
+    def __init__(self, main_window, defaults={'rtorrent url': 'http://localhost/RPC2', 'remote root': '/'}, config_path=None, load=True):
         self.main_window = main_window
         self.settings = ConfigParser(defaults)
         if load:
@@ -328,9 +328,7 @@ class UpdateScheduler(threading.Thread):
 
 class LoadTorrentDialog(wx.Dialog):
     def __init__(self, parent_window):
-        from browser import PathBrowser
         wx.Dialog.__init__(self, None, wx.ID_ANY, "Load torrent")
-        self.browser = PathBrowser(parent_window)
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.SetSizer(sizer)
         padding = 3
@@ -346,11 +344,12 @@ class LoadTorrentDialog(wx.Dialog):
         url_label = wx.StaticText(self, label="From URL:")
         self.url = wx.TextCtrl(self)
         url_sizer.AddMany([(url_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, padding), (self.url, 1, wx.EXPAND | wx.ALL, padding)])
+        sizer.AddMany([(file_sizer, 0, wx.EXPAND),(url_sizer, 0, wx.EXPAND)])
 
-        dest_sizer = wx.BoxSizer(wx.HORIZONTAL)
         destpath_label = wx.StaticText(self, label="Save in:")
-        self.destpath = wx.TextCtrl(self)
-        dest_sizer.AddMany([(destpath_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, padding), (self.destpath, 1, wx.EXPAND | wx.ALL, padding)])
+        from browser import PathBrowser
+        self.browser = PathBrowser(self, parent_window)
+        sizer.AddMany([(destpath_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, padding), (self.browser, 0, wx.EXPAND | wx.ALL, padding)])
               
         start_sizer = wx.BoxSizer(wx.HORIZONTAL)
         start_label = wx.StaticText(self, label="Start on load")
@@ -362,7 +361,7 @@ class LoadTorrentDialog(wx.Dialog):
         cancel = wx.Button(self, id=wx.ID_CANCEL)
         buttons_sizer.AddMany([(ok, 0, wx.ALIGN_RIGHT | wx.ALL, padding),(cancel, 0, wx.ALIGN_RIGHT | wx.ALL, padding)])
 
-        sizer.AddMany([(file_sizer, 0, wx.EXPAND),(url_sizer, 0, wx.EXPAND),(dest_sizer, 0, wx.EXPAND),(start_sizer, 0, wx.EXPAND),(buttons_sizer, 0, wx.EXPAND)])
+        sizer.AddMany([(start_sizer, 0, wx.EXPAND),(buttons_sizer, 0, wx.EXPAND)])
 
     def OnBrowse(self,e):
         ''' Open a file'''
