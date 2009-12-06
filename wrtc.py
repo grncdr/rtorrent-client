@@ -10,7 +10,7 @@ import os, sys, threading, wx, time
 from ConfigParser import ConfigParser
 from wx.lib import scrolledpanel as sp
 from rtdaemon import rTDaemon
-from Queue import Queue
+from collections import deque
 from multiqueue import MultiQueue
 
 NAME_OF_THIS_APP = 'wrTc'
@@ -19,7 +19,7 @@ def format_bytes(bytes, characters=5):
     units = ("B", "KB", "MB", "GB", "TB")
     bytes = float(bytes)
     for unit in units:
-        if bytes < 1024:
+        if abs(bytes) < 1024:
             break
         bytes /= 1024
     return str(round(bytes,2))+unit
@@ -74,15 +74,18 @@ class SettingsManager():
     def save(self, evt):
         for setting, control in self.controls:
             self.settings.set("DEFAULT", setting, str(control.GetValue()))
-        with open(self.config_path,'wb') as fh:
+        try:
+            fh = open(self.config_path,'wb')
             self.settings.write(fh)
+        finally:
+            fh.close()
         self.main_window.daemon_thread.open(self.settings.get("DEFAULT",'rTorrent URL'))
         self.dlg.Close()
 
 class MainWindow(wx.Frame):
     def __init__(self, parent, id, title):
         wx.Frame.__init__(self, parent, id, title, size=(600,600))
-        self.job_queue = Queue()
+        self.job_queue = deque()
         self.settings_manager = SettingsManager(self)
         self.daemon_thread = rTDaemon(self.job_queue, self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
         self.daemon_thread.start()
@@ -135,7 +138,7 @@ class MainWindow(wx.Frame):
                 argument = dlg.url.GetValue()
             if dlg.start_immediate.GetValue():
                 action += "_start"
-            self.job_queue.put((1, action, argument))
+            self.job_queue.append_left((action, argument))
         dlg.Destroy()
 
     def OnExit(self,e):
@@ -148,12 +151,23 @@ class TorrentsNotebook(wx.Notebook):
         wx.Notebook.__init__(self, parent, *args, **kwargs)
         self.views_to_load = ["incomplete", "seeding", "stopped"]
         self.load_views()
+        self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.page_changed)
 
     def load_views(self):
         self.DeleteAllPages()
         for view in self.views_to_load:
             self.AddPage(ViewPanel(self, view), view.capitalize());
+        self.page_changed()
 
+    def page_changed(self, evt=None):
+        if evt:
+            evt.Skip()
+            page = self.GetPage(evt.GetSelection())
+        else:
+            page = self.GetCurrentPage()
+        queue = self.GetTopLevelParent().job_queue
+        queue.clear()
+        queue.append(('download_list', page.title, page.set_list ))
 
 class ViewPanel(wx.ListView):
     _columns = [
@@ -161,14 +175,9 @@ class ViewPanel(wx.ListView):
             "label": "Name", 
             "command": "d.get_name",
             'width': 200, 
-            "default": "Loading torrent data..."
+            "default": "Loading torrent data...",
+            "frequency": 0,
         }, 
-        {
-            "label": "Progress",
-            "command": "d.get_bytes_done",
-            "formatter": format_bytes,
-            "default": "N/A",
-        },
         {
             "label": "Up Rate",
             "command": "d.get_up_rate",
@@ -182,6 +191,13 @@ class ViewPanel(wx.ListView):
             "formatter": format_bytes,
         },
         {
+            "label": "Size",
+            "command": "d.get_size_bytes",
+            "default": "N/A",
+            "formatter": format_bytes,
+            "frequency": 0
+        },
+        {
             "label": "Uploaded",
             "command": "d.get_up_total",
             "default": "N/A",
@@ -189,7 +205,7 @@ class ViewPanel(wx.ListView):
         },
         {
             "label": "Downloaded",
-            "command": "d.get_down_total",
+            "command": "d.get_bytes_done",
             "default": "N/A",
             "formatter": format_bytes,
         },
@@ -200,18 +216,21 @@ class ViewPanel(wx.ListView):
             "default": "N/A",
             "width": 45,
             "default": "N/A", 
+            "frequency": 10
         },
         {
             "label": "S",
             "command": "d.get_peers_complete",
             "width": 25,
             "default": "N/A",
+            "frequency": 10
         },
         {
             "label": "P",
             "command": "d.get_peers_accounted",
             "width": 25,
             "default": "N/A",
+            "frequency": 10
         },
     ]
     def __init__(self, parent, title="default"):
@@ -221,11 +240,7 @@ class ViewPanel(wx.ListView):
         self.title = title
         self.create_columns()
         self.joblist = MultiQueue()
-        #self.jobs = {0: [("download_list", self.title, self.set_list)]}
-        self.joblist.put(0, ("download_list", self.title, self.set_list))
         self.joblist.put(5, ("download_list", self.title, self.set_list))
-        #self.jobs.__len__ = self.fake_length
-        print self, self.joblist
 
     def __repr__(self):
         return "rTorrent View (wx.ListView) - "+self.title.capitalize()
@@ -276,34 +291,31 @@ class ViewPanel(wx.ListView):
         dlg.Destroy()
 
 class UpdateScheduler(threading.Thread):
+    ''' This thread reads the joblist for the current view, 
+    and queues up jobs at an appropriate frequency '''
     def __init__(self, notebook):
         threading.Thread.__init__(self)
         self.notebook = notebook
         self.remote_queue = notebook.GetTopLevelParent().job_queue
     
     def run(self):
-        then = 0
         while True:
             job_list = self.notebook.GetCurrentPage().joblist
             immediate = job_list.get(0, clear=True)
             self.add_jobs(immediate)
-            if len(job_list) == 0:
-                print "No jobs for", self.notebook.GetCurrentPage()
-                print self.notebook.GetCurrentPage().jobs
-                time.sleep(1)
-                continue
             now = int(time.time())
-            if then == now:
+            if len(job_list) == 0:
+                time.sleep(1)
                 continue
             for i in job_list.keys():
                 if not (now % i):
                     list = job_list.get(i)
                     self.add_jobs(list)
-            then = now
+            time.sleep(1)
 
     def add_jobs(self, list):
         for job in list:
-            self.remote_queue.put(job)
+            self.remote_queue.append(job)
 
 class LoadTorrentDialog(wx.Dialog):
     def __init__(self):
