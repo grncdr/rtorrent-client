@@ -16,7 +16,6 @@ class rTDaemon(threading.Thread):
         self.remote_request(('system.client_version', '', self._set_connected))
 
     def _set_connected(self, version):
-        print "Connected to rtorrent version", version
         self.started = int(time.time())
         self.connected = True
 
@@ -26,10 +25,12 @@ class rTDaemon(threading.Thread):
                 self.open(self.url)
                 time.sleep(5)
             else:
-                job = self.jobs.get()
-                if self.remote_request(job): 
-                    self.jobs.task_done()
-                else:
+                try:
+                    job = self.jobs.pop()
+                except IndexError:
+                    time.sleep(1)
+                    continue
+                if not self.remote_request(job): 
                     self.jobs.put(job)
 
     def remote_request(self,job):
@@ -40,11 +41,10 @@ class rTDaemon(threading.Thread):
             command, argument = job
         try:
             response = getattr(self.proxy, command)(argument)
-        except ProtocolError as e:
+        except ProtocolError, e:
             print e.errcode, "-", e.url.split('@').pop(), '-', command
             return False
         except:
-            print "WTF!", job
             return False
         if callback:
             callback(response)
