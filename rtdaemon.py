@@ -26,7 +26,7 @@ class rTDaemon(threading.Thread):
                 time.sleep(5)
             else:
                 try:
-                    job = self.jobs.pop()
+                    job = self.jobs.popleft()
                 except IndexError:
                     time.sleep(1)
                     continue
