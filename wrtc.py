@@ -349,7 +349,7 @@ class LoadTorrentDialog(wx.Dialog):
         destpath_label = wx.StaticText(self, label="Save in:")
         from browser import PathBrowser
         self.browser = PathBrowser(self, parent_window)
-        sizer.AddMany([(destpath_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, padding), (self.browser, 0, wx.EXPAND | wx.ALL, padding)])
+        sizer.AddMany([(destpath_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, padding), (self.browser, 1, wx.EXPAND | wx.ALL, padding)])
               
         start_sizer = wx.BoxSizer(wx.HORIZONTAL)
         start_label = wx.StaticText(self, label="Start on load")
