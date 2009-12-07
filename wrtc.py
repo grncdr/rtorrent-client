@@ -104,7 +104,7 @@ class MainWindow(wx.Frame):
         self.file_menu.Append(wx.ID_PREFERENCES, "&Preferences")
         self.Bind(wx.EVT_MENU, self.settings_manager.show_dialog, id=wx.ID_PREFERENCES)
         self.file_menu.Append(wx.ID_EXIT, "&Quit")
-        self.Bind(wx.EVT_MENU, self.quit, id=wx.ID_EXIT)
+        self.Bind(wx.EVT_MENU, self.on_exit, id=wx.ID_EXIT)
         self.menu_bar.Append(self.file_menu, "&File")
 
         self.help_menu = wx.Menu()
@@ -118,9 +118,12 @@ class MainWindow(wx.Frame):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 10)
         self.SetSizer(main_sizer)
-
-    def quit(self, evt):
-        self.Destroy()
+#    Icons = {}
+#    Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
+#    Icons['pause'] = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR)
+#    Icons['add'] = wx.ArtProvider.GetBitmap(wx.ART_NEW, wx.ART_TOOLBAR)
+#    Icons['remove'] = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_FRAME_ICON)
+#    ControlIcons = (Icons['play'], Icons['pause'])
 
     def on_about_request(self, evt):
         dlg = wx.MessageDialog(self, "wxPython rTorrent client", NAME_OF_THIS_APP, wx.OK | wx.ICON_INFORMATION)
@@ -131,15 +134,12 @@ class MainWindow(wx.Frame):
         if filename:
             dlg.filepath.SetValue(filename)
         if dlg.ShowModal() == wx.ID_OK:
-            action = "load"
+            start = dlg.start_immediate.GetValue()
+            dest = dlg.browser.GetPyData(dlg.browser.GetSelection())['path']
             if dlg.filepath.GetValue() != '':
-                action += "_raw"
-                argument = self.get_torrent_data(dlg.filepath.GetValue())
+                self.daemon_thread.send_torrent(dlg.filepath.GetValue(), start, dest)
             elif dlg.url.GetValue() != '':
-                argument = dlg.url.GetValue()
-            if dlg.start_immediate.GetValue():
-                action += "_start"
-            self.job_queue.append_left((action, argument))
+                self.daemon_thread.send_torrent(dlg.url.GetValue(), start, dest, True)
         dlg.Destroy()
 
     def on_exit(self,e):
@@ -372,18 +372,7 @@ class LoadTorrentDialog(wx.Dialog):
             self.filepath.SetValue(self.dirname+"/"+self.filename)
         dlg.Destroy()
 
-def fire_it_up():
+if __name__ == "__main__":
     app = wx.PySimpleApp()
     frame = MainWindow(None, wx.ID_ANY, NAME_OF_THIS_APP+" - wxPython rTorrent client") 
-
-#    Icons = {}
-#    Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
-#    Icons['pause'] = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR)
-#    Icons['add'] = wx.ArtProvider.GetBitmap(wx.ART_NEW, wx.ART_TOOLBAR)
-#    Icons['remove'] = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_FRAME_ICON)
-#    ControlIcons = (Icons['play'], Icons['pause'])
-
     app.MainLoop()
-
-if __name__ == "__main__":
-    fire_it_up()
