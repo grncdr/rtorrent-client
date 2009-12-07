@@ -9,7 +9,7 @@ Description: This is a little app that connects to and monitors a remote rTorren
 import os, sys, threading, wx, time
 from ConfigParser import ConfigParser
 from wx.lib.mixins.listctrl import ListCtrlAutoWidthMixin
-from rtdaemon import rTDaemon
+import rtdaemon
 from collections import deque
 from multiqueue import MultiQueue
 
@@ -79,7 +79,7 @@ class SettingsManager():
             self.settings.write(fh)
         finally:
             fh.close()
-        self.main_window.daemon_thread.open(self.settings.get("DEFAULT",'rTorrent URL'))
+        self.main_window.daemon.open(self.settings.get("DEFAULT",'rTorrent URL'))
         self.dlg.Close()
 
 class MainWindow(wx.Frame):
@@ -87,8 +87,8 @@ class MainWindow(wx.Frame):
         wx.Frame.__init__(self, parent, id, title, size=(600,600))
         self.job_queue = deque()
         self.settings_manager = SettingsManager(self)
-        self.daemon_thread = rTDaemon(self.job_queue, self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
-        self.daemon_thread.start()
+        self.daemon = rtdaemon.rTDaemon(self.job_queue, self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
+        self.daemon.start()
         self.create_interface()
         self.Show()
         self.refresher_thread = UpdateScheduler(self.notebook)
@@ -134,16 +134,34 @@ class MainWindow(wx.Frame):
         if filename:
             dlg.filepath.SetValue(filename)
         if dlg.ShowModal() == wx.ID_OK:
-            start = dlg.start_immediate.GetValue()
-            dest = dlg.browser.GetPyData(dlg.browser.GetSelection())['path']
-            if dlg.filepath.GetValue() != '':
-                self.daemon_thread.send_torrent(dlg.filepath.GetValue(), start, dest)
-            elif dlg.url.GetValue() != '':
-                self.daemon_thread.send_torrent(dlg.url.GetValue(), start, dest, True)
+            self.send_torrent(dlg)
         dlg.Destroy()
 
+    def send_torrent(self, dlg):
+        start = dlg.start_immediate.GetValue()
+        dest = dlg.browser.GetPyData(dlg.browser.GetSelection())['path']
+        if dlg.filepath.GetValue() != '':
+            torrent_file = open(dlg.filepath.GetValue(),'rb')
+        elif dlg.url.GetValue() != '':
+            import urllib2
+            torrent_file = urllib2.urlopen(dlg.url.GetValue())
+        torrent_data = torrent_file.read()
+        torrent_file.close()
+        infohash = rtdaemon.make_hash(torrent_data)
+        torrent_data = rtdaemon.Binary(torrent_data)
+        def dest_callback(rv):
+            print 'Hit dest_callback', infohash, dest, start
+            def start_callback(rv):
+                print 'Hit start_callback', infohash, dest, start
+                if start:
+                    self.job_queue.append(('d.start', infohash))
+            print 'adding job to queue'
+            self.job_queue.append(('d.set_directory', (infohash, dest), 
+                               start_callback))
+        self.job_queue.append(('load_raw', torrent_data, dest_callback))
+
     def on_exit(self,e):
-        self.daemon_thread.proceed = False
+        self.daemon.proceed = False
         self.refresher_thread.proceed = False
         self.Show(False)
         time.sleep(2)
@@ -289,7 +307,10 @@ class ViewPanel(ListCtrlAutoWidthMixin, wx.ListView):
                 rv = self._columns[col]['formatter'](rv)
             else:
                 rv = str(rv)
-            self.SetStringItem(row, col, rv)
+            try: # Occasionally we try to update an item after it has been removed
+                self.SetStringItem(row, col, rv)
+            except PyAssertionError: #Wish this threw something a bit less generic...
+                return
         return callback
                 
     def on_erase(self, e):
@@ -337,7 +358,7 @@ class LoadTorrentDialog(wx.Dialog):
         filepath_label = wx.StaticText(self, label="From file:")
         self.filepath = wx.TextCtrl(self)
         browse_button = wx.Button(self, label="Browse...")
-        browse_button.Bind(wx.EVT_BUTTON, self.OnBrowse)
+        browse_button.Bind(wx.EVT_BUTTON, self.on_browse)
         file_sizer.AddMany([(filepath_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, padding), (self.filepath, 1, wx.EXPAND | wx.ALL, padding),(browse_button, 0, wx.ALL, padding)])
 
         url_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -363,7 +384,7 @@ class LoadTorrentDialog(wx.Dialog):
 
         sizer.AddMany([(start_sizer, 0, wx.EXPAND),(buttons_sizer, 0, wx.EXPAND)])
 
-    def OnBrowse(self,e):
+    def on_browse(self,e):
         ''' Open a file'''
         dlg = wx.FileDialog(self, "Choose a file", os.getcwd(), "", "*.torrent", wx.OPEN)
         if dlg.ShowModal() == wx.ID_OK:

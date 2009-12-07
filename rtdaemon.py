@@ -47,6 +47,8 @@ class rTDaemon(threading.Thread):
             callback = False
             command, argument = job
         try:
+            if command == 'd.set_directory':
+                print 'Setting directory:', argument
             if type(argument) == tuple:
                 response = getattr(self.proxy, command)(*argument)
             else:
@@ -59,27 +61,3 @@ class rTDaemon(threading.Thread):
         if callback:
             callback(response)
         return True
-
-    def send_torrent(self, source, dest, start, url=False):
-        if url:
-            import urllib2
-            torrent_file = urllib2.urlopen(source)
-        else:
-            torrent_file = open(source,'rb')
-        torrent_data = torrent_file.read()
-        torrent_file.close()
-        infohash = make_hash(torrent_data)
-        torrent_data = Binary(torrent_data)
-        def dest_callback(rv):
-            print 'Hit dest_callback', infohash, dest, start
-            def start_callback(rv):
-                print 'Hit start_callback', infohash, dest, start
-                if start:
-                    time.sleep(3)
-                    self.jobs.append(('d.start', infohash))
-            time.sleep(3)
-            print 'adding job to queue'
-            self.jobs.append(('d.set_directory', (infohash, dest), 
-                               start_callback))
-        self.jobs.appendleft(('load_raw', torrent_data, dest_callback))
-
