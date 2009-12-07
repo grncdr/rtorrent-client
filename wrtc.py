@@ -13,6 +13,7 @@ from xmlrpcdaemon import XMLRPCDaemon
 from multiqueue import MultiQueue
 
 NAME_OF_THIS_APP = 'wrTc'
+WRTC_OSX = (os.uname()[0] == 'Darwin')
 
 def format_bytes(bytes, characters=5):
     units = ("B", "KB", "MB", "GB", "TB")
@@ -86,6 +87,38 @@ class SettingsManager():
         self.main_window.daemon.open(self.settings.get("DEFAULT",'rTorrent URL'))
         self.dlg.Close()
 
+class wrtcApp(wx.App):
+    def __init__(self, *args, **kwargs):
+        wx.App.__init__(self, *args, **kwargs)
+        self.Bind(wx.EVT_ACTIVATE_APP, self.activate)
+
+    def OnInit(self):
+        self.frame = MainWindow(None, wx.ID_ANY, NAME_OF_THIS_APP+" - wxPython rTorrent client") 
+        self.frame.Show()
+        import sys
+        if len(sys.argv) > 1 and os.path.is_file(sys.argv[1]):
+            self.frame.load_torrent(sys.argv[1])
+        return True
+
+    def raise_frame(self):
+        try: 
+            self.frame.Raise()
+        except:
+            pass
+
+    def activate(self, evt):
+        if evt.GetActive():
+            self.raise_frame()
+        evt.Skip()
+
+    def MacOpenFile(self, filename):
+        self.frame.load_torrent(filename=filename)
+
+    def MacReopenApp(self):
+        self.raise_frame()
+        
+
+
 class MainWindow(wx.Frame):
     def __init__(self, parent, id, title):
         wx.Frame.__init__(self, parent, id, title, size=(600,600))
@@ -94,7 +127,6 @@ class MainWindow(wx.Frame):
         self.job_queue = self.daemon.jobs
         self.daemon.start()
         self.create_interface()
-        self.Show()
         self.refresher_thread = UpdateScheduler(self.notebook)
         self.refresher_thread.start()
         self.Bind(wx.EVT_CLOSE, self.on_exit)
@@ -267,7 +299,10 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
         self.title = title
         self.create_columns()
         ListCtrlAutoWidthMixin.__init__(self)
-        self.setResizeColumn(0)
+        if WRTC_OSX:
+            self.setResizeColumn(1)
+        else:
+            self.setResizeColumn(0)
         self.joblist = MultiQueue()
         self.joblist.put(5, ("download_list", self.title, self.set_list))
 
@@ -399,6 +434,5 @@ class LoadTorrentDialog(wx.Dialog):
         dlg.Destroy()
 
 if __name__ == "__main__":
-    app = wx.PySimpleApp()
-    frame = MainWindow(None, wx.ID_ANY, NAME_OF_THIS_APP+" - wxPython rTorrent client") 
+    app = wrtcApp()
     app.MainLoop()
