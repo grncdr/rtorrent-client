@@ -1,6 +1,12 @@
 import threading
 from xmlrpclib import ServerProxy, Binary, ProtocolError
 import time
+
+def make_hash(tdata):
+    from bencode import bdecode, bencode
+    from hashlib import sha1
+    return sha1(bencode(bdecode(tdata)['info'])).hexdigest().upper()
+
 class rTDaemon(threading.Thread):
     def __init__(self, queue, url):
         threading.Thread.__init__(self)
@@ -41,7 +47,10 @@ class rTDaemon(threading.Thread):
             callback = False
             command, argument = job
         try:
-            response = getattr(self.proxy, command)(argument)
+            if type(argument) == tuple:
+                response = getattr(self.proxy, command)(*argument)
+            else:
+                response = getattr(self.proxy, command)(argument)
         except ProtocolError, e:
             print e.errcode, "-", e.url.split('@').pop(), '-', command
             return False
@@ -51,17 +60,26 @@ class rTDaemon(threading.Thread):
             callback(response)
         return True
 
-    def send_file(self, filename, start=False):
-        action = "load_raw"
-        if start:
-            action += "_start"
-        torrent_file = open(filename,'rb')
-        torrent_data = Binary(torrent_file.read()+torrent_file.read())
+    def send_torrent(self, source, dest, start, url=False):
+        if url:
+            import urllib2
+            torrent_file = urllib2.urlopen(source)
+        else:
+            torrent_file = open(source,'rb')
+        torrent_data = torrent_file.read()
         torrent_file.close()
-        self.jobs.put((1, action, torrent_data))
+        infohash = make_hash(torrent_data)
+        torrent_data = Binary(torrent_data)
+        def dest_callback(rv):
+            print 'Hit dest_callback', infohash, dest, start
+            def start_callback(rv):
+                print 'Hit start_callback', infohash, dest, start
+                if start:
+                    time.sleep(3)
+                    self.jobs.append(('d.start', infohash))
+            time.sleep(3)
+            print 'adding job to queue'
+            self.jobs.append(('d.set_directory', (infohash, dest), 
+                               start_callback))
+        self.jobs.appendleft(('load_raw', torrent_data, dest_callback))
 
-    def send_url(self, url, start=False):
-        action = "load"
-        if start:
-            action += "_start"
-        self.jobs.put((1, action, url))
