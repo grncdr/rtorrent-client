@@ -30,22 +30,25 @@ def make_hash(tdata):
     return sha1(bencode(bdecode(tdata)['info'])).hexdigest().upper()
 
 class SettingsManager():
-    def __init__(self, main_window, defaults={'rtorrent url': 'http://localhost/RPC2', 'remote root': '/'}, config_path=None, load=True):
+    def __init__(self, main_window, defaults={'rtorrent url': 'http://localhost/RPC2', 'remote root': '/'}, config_path=None):
         self.main_window = main_window
         self.settings = ConfigParser(defaults)
-        if load:
-            if not config_path:
-                self.config_path = self.get_default_config_path()
-            self.settings.read(self.config_path)
+        if not config_path:
+            config_path = self.get_default_config_path()
+        if not os.path.is_file(config_path):
+            self.show_dialog()
+        else:
+            self.settings.read(config_path)
+        self.config_path = config_path
+
 
     def get_default_config_path(self):
         if os.name == 'nt':
-            config_path = os.path.expanduser("~\AppData\Local\wrtc.rc")
+            return os.path.expanduser("~\AppData\Local\wrtc.rc")
         else:
-            config_path = os.path.expanduser("~/.config/wrtc.rc")
-        return config_path
+            return os.path.expanduser("~/.config/wrtc.rc")
 
-    def show_dialog(self, evt):
+    def show_dialog(self, evt=None):
         self.dlg = wx.Dialog(self.main_window, title="Settings")
         sizer = wx.FlexGridSizer(4,2,0,10)
         sizer.SetFlexibleDirection(wx.HORIZONTAL)
@@ -89,7 +92,12 @@ class SettingsManager():
 
 class wrtcApp(wx.App):
     def __init__(self, *args, **kwargs):
+        self.settings_manager = SettingsManager(self)
+        self.daemon = XMLRPCDaemon(self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
+        self.daemon.start()
         wx.App.__init__(self, *args, **kwargs)
+        self.refresher_thread = UpdateScheduler(self)
+        self.refresher_thread.start()
         self.Bind(wx.EVT_ACTIVATE_APP, self.activate)
 
     def OnInit(self):
@@ -97,7 +105,7 @@ class wrtcApp(wx.App):
         self.frame.Show()
         import sys
         if len(sys.argv) > 1 and os.path.is_file(sys.argv[1]):
-            self.frame.load_torrent(sys.argv[1])
+            self.load_torrent(sys.argv[1])
         return True
 
     def raise_frame(self):
@@ -112,59 +120,11 @@ class wrtcApp(wx.App):
         evt.Skip()
 
     def MacOpenFile(self, filename):
-        self.frame.load_torrent(filename=filename)
+        self.load_torrent(filename=filename)
 
     def MacReopenApp(self):
         self.raise_frame()
         
-
-
-class MainWindow(wx.Frame):
-    def __init__(self, parent, id, title):
-        wx.Frame.__init__(self, parent, id, title, size=(600,600))
-        self.settings_manager = SettingsManager(self)
-        self.daemon = XMLRPCDaemon(self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
-        self.job_queue = self.daemon.jobs
-        self.daemon.start()
-        self.create_interface()
-        self.refresher_thread = UpdateScheduler(self.notebook)
-        self.refresher_thread.start()
-        self.Bind(wx.EVT_CLOSE, self.on_exit)
-
-    def create_interface(self):
-        self.menu_bar = wx.MenuBar()
-
-        self.file_menu = wx.Menu()
-        self.file_menu.Append(wx.ID_OPEN, "Add &Torrent")
-        self.Bind(wx.EVT_MENU, self.load_torrent, id=wx.ID_OPEN)
-        self.file_menu.Append(wx.ID_PREFERENCES, "&Preferences")
-        self.Bind(wx.EVT_MENU, self.settings_manager.show_dialog, id=wx.ID_PREFERENCES)
-        self.file_menu.Append(wx.ID_EXIT, "&Quit")
-        self.Bind(wx.EVT_MENU, self.on_exit, id=wx.ID_EXIT)
-        self.menu_bar.Append(self.file_menu, "&File")
-
-        self.help_menu = wx.Menu()
-        self.help_menu.Append(wx.ID_ABOUT, "&About "+NAME_OF_THIS_APP)
-        self.Bind(wx.EVT_MENU, self.on_about_request, id=wx.ID_ABOUT)
-        self.menu_bar.Append(self.help_menu, "&Help")
-
-        self.SetMenuBar(self.menu_bar)
-
-        self.notebook = TorrentsNotebook(self)
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
-        main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 10)
-        self.SetSizer(main_sizer)
-#    Icons = {}
-#    Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
-#    Icons['pause'] = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR)
-#    Icons['add'] = wx.ArtProvider.GetBitmap(wx.ART_NEW, wx.ART_TOOLBAR)
-#    Icons['remove'] = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_FRAME_ICON)
-#    ControlIcons = (Icons['play'], Icons['pause'])
-
-    def on_about_request(self, evt):
-        dlg = wx.MessageDialog(self, "wxPython rTorrent client", NAME_OF_THIS_APP, wx.OK | wx.ICON_INFORMATION)
-        dlg.ShowModal()
-
     def load_torrent(self,e=None,filename=None):
         dlg = LoadTorrentDialog(self)
         if filename:
@@ -186,15 +146,50 @@ class MainWindow(wx.Frame):
         infohash = make_hash(torrent_data)
         torrent_data = xmlrpcdaemon.Binary(torrent_data)
         def dest_callback(rv):
-            print 'Hit dest_callback', infohash, dest, start
             def start_callback(rv):
-                print 'Hit start_callback', infohash, dest, start
                 if start:
-                    self.job_queue.append(('d.start', infohash))
-            print 'adding job to queue'
+                    self.daemon.jobs.append(('d.start', infohash))
             self.job_queue.append(('d.set_directory', (infohash, dest), 
                                start_callback))
-        self.job_queue.append(('load_raw', torrent_data, dest_callback))
+        self.daemon.jobs.append(('load_raw', torrent_data, dest_callback))
+
+class MainWindow(wx.Frame):
+    def __init__(self, parent, id, title):
+        wx.Frame.__init__(self, parent, id, title, size=(600,600))
+
+        self.menu_bar = wx.MenuBar()
+
+        self.file_menu = wx.Menu()
+        self.file_menu.Append(wx.ID_OPEN, "Add &Torrent")
+        self.Bind(wx.EVT_MENU, wx.GetApp().load_torrent, id=wx.ID_OPEN)
+        self.file_menu.Append(wx.ID_PREFERENCES, "&Preferences")
+        self.Bind(wx.EVT_MENU, wx.GetApp().settings_manager.show_dialog, id=wx.ID_PREFERENCES)
+        self.file_menu.Append(wx.ID_EXIT, "&Quit")
+        self.Bind(wx.EVT_MENU, self.on_exit, id=wx.ID_EXIT)
+        self.menu_bar.Append(self.file_menu, "&File")
+
+        self.help_menu = wx.Menu()
+        self.help_menu.Append(wx.ID_ABOUT, "&About "+NAME_OF_THIS_APP)
+        self.Bind(wx.EVT_MENU, self.on_about_request, id=wx.ID_ABOUT)
+        self.menu_bar.Append(self.help_menu, "&Help")
+
+        self.SetMenuBar(self.menu_bar)
+
+        self.notebook = TorrentsNotebook(self)
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 10)
+        self.SetSizer(main_sizer)
+        self.Bind(wx.EVT_CLOSE, self.on_exit)
+#    Icons = {}
+#    Icons['play'] = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_TOOLBAR)
+#    Icons['pause'] = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR)
+#    Icons['add'] = wx.ArtProvider.GetBitmap(wx.ART_NEW, wx.ART_TOOLBAR)
+#    Icons['remove'] = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_FRAME_ICON)
+#    ControlIcons = (Icons['play'], Icons['pause'])
+
+    def on_about_request(self, evt):
+        dlg = wx.MessageDialog(self, "wxPython rTorrent client", NAME_OF_THIS_APP, wx.OK | wx.ICON_INFORMATION)
+        dlg.ShowModal()
 
     def on_exit(self,e):
         self.daemon.proceed = False
@@ -224,7 +219,7 @@ class TorrentsNotebook(wx.Notebook):
             page = self.GetPage(evt.GetSelection())
         else:
             page = self.GetCurrentPage()
-        queue = self.GetTopLevelParent().job_queue
+        queue = wx.GetApp().daemon.jobs
         queue.clear()
         queue.append(('download_list', page.title, page.set_list ))
 
@@ -304,6 +299,7 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
         else:
             self.setResizeColumn(0)
         self.joblist = MultiQueue()
+        self.joblist.put(0, ("download_list", self.title, self.set_list))
         self.joblist.put(5, ("download_list", self.title, self.set_list))
 
     def __repr__(self):
@@ -362,10 +358,10 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
 class UpdateScheduler(threading.Thread):
     ''' This thread reads the joblist for the current view, 
     and queues up jobs at an appropriate frequency '''
-    def __init__(self, notebook):
+    def __init__(self, app):
         threading.Thread.__init__(self)
-        self.notebook = notebook
-        self.remote_queue = notebook.GetTopLevelParent().job_queue
+        self.notebook = app.frame.notebook
+        self.remote_queue = app.daemon.jobs
         self.proceed = True
     
     def run(self):
@@ -434,5 +430,5 @@ class LoadTorrentDialog(wx.Dialog):
         dlg.Destroy()
 
 if __name__ == "__main__":
-    app = wrtcApp()
+    app = wrtcApp(False)
     app.MainLoop()
