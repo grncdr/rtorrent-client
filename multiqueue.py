@@ -44,7 +44,7 @@ class MultiQueue(object):
 
     def remove(self, test):
         self.lock.acquire()
-        for list in self._lists:
+        for list in self._lists.values():
             for item in list:
                 if test(item):
                     list.remove(item)
