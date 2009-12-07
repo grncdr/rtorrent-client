@@ -183,7 +183,7 @@ class TorrentsNotebook(wx.Notebook):
     def load_views(self):
         self.DeleteAllPages()
         for view in self.views_to_load:
-            self.AddPage(ViewPanel(self, view), view.capitalize());
+            self.AddPage(rTorrentView(self, view), view.capitalize());
         self.page_changed()
 
     def page_changed(self, evt=None):
@@ -196,7 +196,7 @@ class TorrentsNotebook(wx.Notebook):
         queue.clear()
         queue.append(('download_list', page.title, page.set_list ))
 
-class ViewPanel(ListCtrlAutoWidthMixin, wx.ListView):
+class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
     _columns = [
         {
             "label": "Name", 
@@ -262,12 +262,12 @@ class ViewPanel(ListCtrlAutoWidthMixin, wx.ListView):
     ]
     def __init__(self, parent, title="default"):
         wx.ListView.__init__(self, parent)
-        ListCtrlAutoWidthMixin.__init__(self)
-        self.setResizeColumn(0)
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.tag_map = {}
         self.title = title
         self.create_columns()
+        ListCtrlAutoWidthMixin.__init__(self)
+        self.setResizeColumn(0)
         self.joblist = MultiQueue()
         self.joblist.put(5, ("download_list", self.title, self.set_list))
 
