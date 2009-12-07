@@ -4,7 +4,7 @@ import time
 from collections import deque
 
 class XMLRPCDaemon(threading.Thread):
-    def __init__(self, queue, url):
+    def __init__(self, url):
         threading.Thread.__init__(self)
         self.connected = False
         self.setDaemon(True)
