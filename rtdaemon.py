@@ -32,7 +32,7 @@ class rTDaemon(threading.Thread):
                     time.sleep(1)
                     continue
                 if not self.remote_request(job): 
-                    self.jobs.put(job)
+                    self.jobs.append(job)
 
     def remote_request(self,job):
         if len(job) == 3:
