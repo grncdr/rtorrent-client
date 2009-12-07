@@ -272,7 +272,7 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
         self.joblist.put(5, ("download_list", self.title, self.set_list))
 
     def __repr__(self):
-        return "rTorrent View (wx.ListView) - "+self.title.capitalize()
+        return "rTorrentView(wx.ListView) - "+self.title.capitalize()
 
     def create_columns(self):
         i = 0
