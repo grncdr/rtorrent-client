@@ -9,8 +9,7 @@ Description: This is a little app that connects to and monitors a remote rTorren
 import os, sys, threading, wx, time
 from ConfigParser import ConfigParser
 from wx.lib.mixins.listctrl import ListCtrlAutoWidthMixin
-import rtdaemon
-from collections import deque
+from xmlrpcdaemon import XMLRPCDaemon
 from multiqueue import MultiQueue
 
 NAME_OF_THIS_APP = 'wrTc'
@@ -23,6 +22,11 @@ def format_bytes(bytes, characters=5):
             break
         bytes /= 1024
     return str(round(bytes,2))+unit
+
+def make_hash(tdata):
+    from bencode import bdecode, bencode
+    from hashlib import sha1
+    return sha1(bencode(bdecode(tdata)['info'])).hexdigest().upper()
 
 class SettingsManager():
     def __init__(self, main_window, defaults={'rtorrent url': 'http://localhost/RPC2', 'remote root': '/'}, config_path=None, load=True):
@@ -85,9 +89,9 @@ class SettingsManager():
 class MainWindow(wx.Frame):
     def __init__(self, parent, id, title):
         wx.Frame.__init__(self, parent, id, title, size=(600,600))
-        self.job_queue = deque()
         self.settings_manager = SettingsManager(self)
-        self.daemon = rtdaemon.rTDaemon(self.job_queue, self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
+        self.daemon = XMLRPCDaemon(self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
+        self.job_queue = self.daemon.jobs
         self.daemon.start()
         self.create_interface()
         self.Show()
@@ -147,8 +151,8 @@ class MainWindow(wx.Frame):
             torrent_file = urllib2.urlopen(dlg.url.GetValue())
         torrent_data = torrent_file.read()
         torrent_file.close()
-        infohash = rtdaemon.make_hash(torrent_data)
-        torrent_data = rtdaemon.Binary(torrent_data)
+        infohash = make_hash(torrent_data)
+        torrent_data = xmlrpcdaemon.Binary(torrent_data)
         def dest_callback(rv):
             print 'Hit dest_callback', infohash, dest, start
             def start_callback(rv):

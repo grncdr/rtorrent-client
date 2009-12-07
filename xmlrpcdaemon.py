@@ -1,18 +1,14 @@
 import threading
 from xmlrpclib import ServerProxy, Binary, ProtocolError
 import time
+from collections import deque
 
-def make_hash(tdata):
-    from bencode import bdecode, bencode
-    from hashlib import sha1
-    return sha1(bencode(bdecode(tdata)['info'])).hexdigest().upper()
-
-class rTDaemon(threading.Thread):
+class XMLRPCDaemon(threading.Thread):
     def __init__(self, queue, url):
         threading.Thread.__init__(self)
         self.connected = False
         self.setDaemon(True)
-        self.jobs = queue
+        self.jobs = deque()
         self.proceed = True
         self.open(url)
 
