@@ -7,6 +7,7 @@ class rTDaemon(threading.Thread):
         self.connected = False
         self.setDaemon(True)
         self.jobs = queue
+        self.proceed = True
         self.open(url)
 
     def open(self, url):
@@ -20,7 +21,7 @@ class rTDaemon(threading.Thread):
         self.connected = True
 
     def run(self):
-        while True:
+        while self.proceed:
             if not self.connected:
                 self.open(self.url)
                 time.sleep(5)

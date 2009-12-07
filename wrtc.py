@@ -93,6 +93,7 @@ class MainWindow(wx.Frame):
         self.Show()
         self.refresher_thread = UpdateScheduler(self.notebook)
         self.refresher_thread.start()
+        self.Bind(wx.EVT_CLOSE, self.on_exit)
 
     def create_interface(self):
         self.menu_bar = wx.MenuBar()
@@ -141,8 +142,11 @@ class MainWindow(wx.Frame):
             self.job_queue.append_left((action, argument))
         dlg.Destroy()
 
-    def OnExit(self,e):
-        del(self.daemon_thread)
+    def on_exit(self,e):
+        self.daemon_thread.proceed = False
+        self.refresher_thread.proceed = False
+        self.Show(False)
+        time.sleep(2)
         self.Destroy()
 
 
@@ -301,9 +305,10 @@ class UpdateScheduler(threading.Thread):
         threading.Thread.__init__(self)
         self.notebook = notebook
         self.remote_queue = notebook.GetTopLevelParent().job_queue
+        self.proceed = True
     
     def run(self):
-        while True:
+        while self.proceed:
             job_list = self.notebook.GetCurrentPage().joblist
             immediate = job_list.get(0, clear=True)
             self.add_jobs(immediate)
