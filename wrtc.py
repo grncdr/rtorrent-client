@@ -167,8 +167,9 @@ class MainWindow(wx.Frame):
     def on_exit(self,e):
         self.daemon.proceed = False
         self.refresher_thread.proceed = False
+        self.daemon.join()
+        self.refresher_thread.join()
         self.Show(False)
-        time.sleep(2)
         self.Destroy()
 
 
