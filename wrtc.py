@@ -9,7 +9,7 @@ Description: This is a little app that connects to and monitors a remote rTorren
 import os, sys, threading, wx, time
 from ConfigParser import ConfigParser
 from wx.lib.mixins.listctrl import ListCtrlAutoWidthMixin
-from xmlrpcdaemon import XMLRPCDaemon
+from xmlrpcdaemon import XMLRPCDaemon, Binary
 from multiqueue import MultiQueue
 
 NAME_OF_THIS_APP = 'wrTc'
@@ -35,12 +35,11 @@ class SettingsManager():
         self.settings = ConfigParser(defaults)
         if not config_path:
             config_path = self.get_default_config_path()
-        if not os.path.is_file(config_path):
+        if not os.path.isfile(config_path):
             self.show_dialog()
         else:
             self.settings.read(config_path)
         self.config_path = config_path
-
 
     def get_default_config_path(self):
         if os.name == 'nt':
@@ -103,9 +102,8 @@ class wrtcApp(wx.App):
     def OnInit(self):
         self.frame = MainWindow(None, wx.ID_ANY, NAME_OF_THIS_APP+" - wxPython rTorrent client") 
         self.frame.Show()
-        import sys
-        if len(sys.argv) > 1 and os.path.is_file(sys.argv[1]):
-            self.load_torrent(sys.argv[1])
+        if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
+            self.load_torrent(filename=sys.argv[1])
         return True
 
     def raise_frame(self):
@@ -122,7 +120,7 @@ class wrtcApp(wx.App):
     def MacOpenFile(self, filename):
         self.load_torrent(filename=filename)
 
-    def MacReopenApp(self):
+    def MacReopenApp(self, *args, **kwargs):
         self.raise_frame()
         
     def load_torrent(self,e=None,filename=None):
@@ -144,12 +142,12 @@ class wrtcApp(wx.App):
         torrent_data = torrent_file.read()
         torrent_file.close()
         infohash = make_hash(torrent_data)
-        torrent_data = xmlrpcdaemon.Binary(torrent_data)
+        torrent_data = Binary(torrent_data)
         def dest_callback(rv):
             def start_callback(rv):
                 if start:
                     self.daemon.jobs.append(('d.start', infohash))
-            self.job_queue.append(('d.set_directory', (infohash, dest), 
+            self.daemon.jobs.append(('d.set_directory', (infohash, dest), 
                                start_callback))
         self.daemon.jobs.append(('load_raw', torrent_data, dest_callback))
 
@@ -192,11 +190,11 @@ class MainWindow(wx.Frame):
         dlg.ShowModal()
 
     def on_exit(self,e):
-        self.daemon.proceed = False
-        self.refresher_thread.proceed = False
-        self.daemon.join()
-        self.refresher_thread.join()
+        wx.GetApp().daemon.proceed = False
+        wx.GetApp().refresher_thread.proceed = False
         self.Show(False)
+        wx.GetApp().daemon.join()
+        wx.GetApp().refresher_thread.join()
         self.Destroy()
 
 
