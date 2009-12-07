@@ -309,7 +309,7 @@ class ViewPanel(ListCtrlAutoWidthMixin, wx.ListView):
                 rv = str(rv)
             try: # Occasionally we try to update an item after it has been removed
                 self.SetStringItem(row, col, rv)
-            except PyAssertionError: #Wish this threw something a bit less generic...
+            except wx.PyAssertionError: #Wish this threw something a bit less generic...
                 return
         return callback
                 
