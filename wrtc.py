@@ -34,10 +34,7 @@ class SettingsManager():
         self.cfg = ConfigParser(defaults)
         if not config_path:
             config_path = self.get_default_config_path()
-        if not os.path.isfile(config_path):
-            self.show_dialog()
-        else:
-            self.cfg.read(config_path)
+        self.cfg.read(config_path)
         self.config_path = config_path
 
     def get(self, setting):
@@ -232,7 +229,7 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
             "command": "d.get_size_bytes",
             "default": "N/A",
             "formatter": format_bytes,
-            "frequency": 0
+            "frequency": 0,
         },
         {
             "label": "Uploaded",
@@ -253,14 +250,14 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
             "default": "N/A",
             "width": 45,
             "default": "N/A", 
-            "frequency": 10
+            "frequency": 20,
         },
         {
             "label": "S",
             "command": "d.get_peers_complete",
             "width": 25,
             "default": "N/A",
-            "frequency": 10
+            "frequency": 20
         },
         {
             "label": "P",
@@ -289,13 +286,15 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
 
     def __repr__(self):
         return "rTorrentView(wx.ListView) - "+self.title.capitalize()
+
     def refresh(self):
-        ''' Called on page change '''
+        ''' Clear the queue and update the current page, called on page change '''
         queue = wx.GetApp().daemon.jobs
         queue.clear()
         queue.append(('download_list', self.title, self.set_list ))
 
     def set_list(self, hashlist):
+        ''' Given a list of infohashes, add and remove torrents from the listctrl as necessary '''
         addList = [val for val in hashlist if val not in self.tag_map.values()]
         rmList = [tag for (tag, hash) in self.tag_map.items() if hash not in hashlist] 
         for id in rmList:
@@ -306,6 +305,7 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
             self.add_torrent(infohash)
         
     def add_torrent(self, infohash):
+        ''' Add a new torrent to the listctrl '''
         tag = wx.NewId()
         self.tag_map[tag] = infohash
         self.Append([c['default'] for c in self._columns])
@@ -319,7 +319,9 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
             self.joblist.put(f, (c['command'], infohash, self.make_callback(tag, i)))
 
     def make_callback(self, tag, col):
+        ''' Returns a function that will update the given list item with the value returned by rTorrent '''
         def callback(rv): 
+            print rv
             row = self.FindItemData(-1, tag)
             if "formatter" in self._columns[col]:
                 rv = self._columns[col]['formatter'](rv)
@@ -423,4 +425,7 @@ class LoadTorrentDialog(wx.Dialog):
 
 if __name__ == "__main__":
     app = wrtcApp(False)
+    if not os.path.isfile(app.settings_manager.config_path):
+        app.settings_manager.show_dialog()
+    
     app.MainLoop()
