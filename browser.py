@@ -19,6 +19,7 @@ class PathBrowser(wx.TreeCtrl):
         self.load_children(self.root_node)
 
     def load_children(self, node):
+        self.SetItemText(node, self.GetItemText(node) + ' [loading...]')
         command = 'execute_capture'
         args = ['find', self.GetPyData(node)['path'], '-maxdepth','1','-type','d','-readable']
         self.jobs.appendleft((command, args, self.make_callback(node)))
@@ -27,6 +28,7 @@ class PathBrowser(wx.TreeCtrl):
         def callback(output):
             data = self.GetPyData(node)
             data['loaded'] = True
+            self.SetItemText(node, self.GetItemText(node).replace(' [loading...]',''))
             self.SetPyData(node, data)
             for dir in output.split('\n')[1:-1]:
                 child = self.AppendItem(node, dir.replace(data['path'],'').replace('/',''))
@@ -34,5 +36,4 @@ class PathBrowser(wx.TreeCtrl):
                 self.SetPyData(child, {'path': dir, 'loaded': False})
             self.Expand(node)
         return callback
-
 
