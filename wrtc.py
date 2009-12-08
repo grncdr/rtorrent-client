@@ -30,16 +30,18 @@ def make_hash(tdata):
     return sha1(bencode(bdecode(tdata)['info'])).hexdigest().upper()
 
 class SettingsManager():
-    def __init__(self, main_window, defaults={'rtorrent url': 'http://localhost/RPC2', 'remote root': '/'}, config_path=None):
-        self.main_window = main_window
-        self.settings = ConfigParser(defaults)
+    def __init__(self, defaults={'rtorrent url': 'http://localhost/RPC2', 'remote root': '/'}, config_path=None):
+        self.cfg = ConfigParser(defaults)
         if not config_path:
             config_path = self.get_default_config_path()
         if not os.path.isfile(config_path):
             self.show_dialog()
         else:
-            self.settings.read(config_path)
+            self.cfg.read(config_path)
         self.config_path = config_path
+
+    def get(self, setting):
+        return self.cfg.get("DEFAULT", setting)
 
     def get_default_config_path(self):
         if os.name == 'nt':
@@ -48,51 +50,41 @@ class SettingsManager():
             return os.path.expanduser("~/.config/wrtc.rc")
 
     def show_dialog(self, evt=None):
-        self.dlg = wx.Dialog(self.main_window, title="Settings")
+        self.dlg = wx.Dialog(None, title="Settings")
         sizer = wx.FlexGridSizer(4,2,0,10)
         sizer.SetFlexibleDirection(wx.HORIZONTAL)
         sizer.AddGrowableCol(1)
         self.dlg.SetSizer(sizer)
         self.controls = [] 
-        for item in self.settings.items("DEFAULT"):
-            k = item[0]
-            try:
-                v = self.settings.getboolean("DEFAULT", k)
-            except:
-                v = self.settings.get("DEFAULT", k)
-            stype = type(v)
-            if stype == type(False):
-                control = wx.CheckBox(self.dlg)
-                control.SetValue(v)
-            elif stype == type('f') or stype == type(u'f') :
-                control = wx.TextCtrl(self.dlg, value=v)
-            else:
-                continue
+        for item in self.cfg.items("DEFAULT"):
+            k, v = item
+            control = wx.TextCtrl(self.dlg, value=v)
             label = wx.StaticText(self.dlg, label=k.title())
             self.controls.append((k, control,))
             sizer.Add(label, flag=wx.EXPAND|wx.ALL, border=10)
             sizer.Add(control, flag=wx.EXPAND|wx.ALL, border=10)
-        sizer.Add(wx.StaticText(self.dlg, label=""))
         save_button = wx.Button(self.dlg, id=wx.ID_OK, label="Save")
         save_button.Bind(wx.EVT_BUTTON, self.save)
+        cancel = wx.Button(self.dlg, id=wx.ID_CANCEL)
+        sizer.Add(cancel, 0, wx.ALIGN_LEFT | wx.ALL, border=10)
         sizer.Add(save_button, 0, wx.ALIGN_RIGHT | wx.ALL, border=10)
         self.dlg.ShowModal()
 
     def save(self, evt):
         for setting, control in self.controls:
-            self.settings.set("DEFAULT", setting, str(control.GetValue()))
+            self.cfg.set("DEFAULT", setting, str(control.GetValue()))
         try:
             fh = open(self.config_path,'wb')
-            self.settings.write(fh)
+            self.cfg.write(fh)
         finally:
             fh.close()
-        self.main_window.daemon.open(self.settings.get("DEFAULT",'rTorrent URL'))
+        wx.GetApp().daemon.open(self.cfg.get("DEFAULT",'rTorrent URL'))
         self.dlg.Close()
 
 class wrtcApp(wx.App):
     def __init__(self, *args, **kwargs):
-        self.settings_manager = SettingsManager(self)
-        self.daemon = XMLRPCDaemon(self.settings_manager.settings.get("DEFAULT", "rTorrent URL"))
+        self.settings_manager = SettingsManager()
+        self.daemon = XMLRPCDaemon(self.settings_manager.get("rTorrent URL"))
         self.daemon.start()
         wx.App.__init__(self, *args, **kwargs)
         self.refresher_thread = UpdateScheduler(self)
@@ -124,7 +116,7 @@ class wrtcApp(wx.App):
         self.raise_frame()
         
     def load_torrent(self,e=None,filename=None):
-        dlg = LoadTorrentDialog(self)
+        dlg = LoadTorrentDialog(self.settings_manager.get('remote root'))
         if filename:
             dlg.filepath.SetValue(filename)
         if dlg.ShowModal() == wx.ID_OK:
@@ -209,17 +201,10 @@ class TorrentsNotebook(wx.Notebook):
         self.DeleteAllPages()
         for view in self.views_to_load:
             self.AddPage(rTorrentView(self, view), view.capitalize());
-        self.page_changed()
 
-    def page_changed(self, evt=None):
-        if evt:
-            evt.Skip()
-            page = self.GetPage(evt.GetSelection())
-        else:
-            page = self.GetCurrentPage()
-        queue = wx.GetApp().daemon.jobs
-        queue.clear()
-        queue.append(('download_list', page.title, page.set_list ))
+    def page_changed(self, evt):
+        self.GetPage(evt.GetSelection()).refresh()
+        evt.Skip()
 
 class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
     _columns = [
@@ -290,7 +275,9 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.tag_map = {}
         self.title = title
-        self.create_columns()
+        for column in self._columns:
+            i = self.GetColumnCount() - 1
+            self.InsertColumn(i,column['label'])
         ListCtrlAutoWidthMixin.__init__(self)
         if WRTC_OSX:
             self.setResizeColumn(1)
@@ -302,14 +289,11 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
 
     def __repr__(self):
         return "rTorrentView(wx.ListView) - "+self.title.capitalize()
-
-    def create_columns(self):
-        i = 0
-        for column in self._columns:
-            self.InsertColumn(i,column['label'])
-            if 'width' in column:
-                self.SetColumnWidth(i,column['width'])
-            i += 1
+    def refresh(self):
+        ''' Called on page change '''
+        queue = wx.GetApp().daemon.jobs
+        queue.clear()
+        queue.append(('download_list', self.title, self.set_list ))
 
     def set_list(self, hashlist):
         addList = [val for val in hashlist if val not in self.tag_map.values()]
@@ -324,8 +308,8 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
     def add_torrent(self, infohash):
         tag = wx.NewId()
         self.tag_map[tag] = infohash
-        self.InsertStringItem(0, 'If you are seeing this, an error has occured ;)')
-        self.SetItemData(0, tag)
+        self.Append([c['default'] for c in self._columns])
+        self.SetItemData(self.GetItemCount()-1, tag)
         for (i, c) in zip(range(len(self._columns)), self._columns):
             self.SetStringItem(0, i, c['default'])
             if 'frequency' in c:
@@ -382,41 +366,51 @@ class UpdateScheduler(threading.Thread):
             self.remote_queue.append(job)
 
 class LoadTorrentDialog(wx.Dialog):
-    def __init__(self, parent_window):
-        wx.Dialog.__init__(self, None, wx.ID_ANY, "Load torrent")
+    def __init__(self, remote_root):
+        wx.Dialog.__init__(self, None, title="Load torrent", size=(400,400))
+        BORDER = 3
+        TEXT = wx.EXPAND|wx.ALL
+        LABEL = wx.ALIGN_CENTER_VERTICAL|wx.ALL
+        BUTTON = wx.ALIGN_RIGHT|wx.ALL
+
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.SetSizer(sizer)
-        padding = 3
-  
+
         file_sizer = wx.BoxSizer(wx.HORIZONTAL)
         filepath_label = wx.StaticText(self, label="From file:")
-        self.filepath = wx.TextCtrl(self)
+        self.filepath = wx.TextCtrl(self, TEXT)
         browse_button = wx.Button(self, label="Browse...")
         browse_button.Bind(wx.EVT_BUTTON, self.on_browse)
-        file_sizer.AddMany([(filepath_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, padding), (self.filepath, 1, wx.EXPAND | wx.ALL, padding),(browse_button, 0, wx.ALL, padding)])
+        file_sizer.Add(filepath_label, 0, LABEL, BORDER)
+        file_sizer.Add(self.filepath, 1, TEXT, BORDER)
+        file_sizer.Add(browse_button, 0, wx.ALL, BORDER)
+        sizer.Add(file_sizer, 0, wx.EXPAND)
 
         url_sizer = wx.BoxSizer(wx.HORIZONTAL)
         url_label = wx.StaticText(self, label="From URL:")
         self.url = wx.TextCtrl(self)
-        url_sizer.AddMany([(url_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, padding), (self.url, 1, wx.EXPAND | wx.ALL, padding)])
-        sizer.AddMany([(file_sizer, 0, wx.EXPAND),(url_sizer, 0, wx.EXPAND)])
+        url_sizer.Add(url_label, 0, LABEL, BORDER)
+        url_sizer.Add(self.url, 1, TEXT, BORDER)
+        sizer.Add(url_sizer, 0, wx.EXPAND)
 
         destpath_label = wx.StaticText(self, label="Save in:")
         from browser import PathBrowser
-        self.browser = PathBrowser(self, parent_window)
-        sizer.AddMany([(destpath_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, padding), (self.browser, 1, wx.EXPAND | wx.ALL, padding)])
+        self.browser = PathBrowser(self, remote_root)
+        sizer.Add(destpath_label, 0, LABEL, BORDER)
+        sizer.Add(self.browser, 1, TEXT, BORDER)
               
         start_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        start_label = wx.StaticText(self, label="Start on load")
-        self.start_immediate = wx.CheckBox(self)
-        start_sizer.AddMany([(start_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, padding), (self.start_immediate, 1, wx.ALL, padding)])
+        self.start_immediate = wx.CheckBox(self, label="Start on load")
+        start_sizer.Add(self.start_immediate, 1, wx.ALL, BORDER)
 
         buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
         ok = wx.Button(self, id=wx.ID_OK)
         cancel = wx.Button(self, id=wx.ID_CANCEL)
-        buttons_sizer.AddMany([(ok, 0, wx.ALIGN_RIGHT | wx.ALL, padding),(cancel, 0, wx.ALIGN_RIGHT | wx.ALL, padding)])
+        buttons_sizer.Add(ok, 0, BUTTON, BORDER)
+        buttons_sizer.Add(cancel, 0, BUTTON, BORDER)
 
-        sizer.AddMany([(start_sizer, 0, wx.EXPAND),(buttons_sizer, 0, wx.EXPAND)])
+        sizer.Add(start_sizer, 0, wx.EXPAND)
+        sizer.Add(buttons_sizer, 0, wx.EXPAND)
 
     def on_browse(self,e):
         ''' Open a file'''

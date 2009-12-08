@@ -1,9 +1,9 @@
 import wx
 class PathBrowser(wx.TreeCtrl):
-    def __init__(self, parent, main_window):
-        wx.TreeCtrl.__init__(self, parent, size=(-1,100))
+    def __init__(self, parent, remote_root):
+        wx.TreeCtrl.__init__(self, parent, size=(-1,200))
         self.jobs = wx.GetApp().daemon.jobs
-        self.remote_root = main_window.settings_manager.settings.get('DEFAULT', 'remote root')
+        self.remote_root = remote_root
         self.Bind(wx.EVT_TREE_ITEM_EXPANDING, self.on_expand)
         self.load_root()
 
