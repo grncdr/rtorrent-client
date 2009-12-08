@@ -280,8 +280,7 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
         self.tag_map = {}
         self.title = title
         for column in self._columns:
-            i = self.GetColumnCount() - 1
-            self.InsertColumn(i,column['label'])
+            self.InsertColumn(self.GetColumnCount(), column['label'])
         ListCtrlAutoWidthMixin.__init__(self)
         if WRTC_OSX:
             self.setResizeColumn(1)
