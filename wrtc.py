@@ -327,7 +327,6 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
     def make_callback(self, tag, col):
         ''' Returns a function that will update the given list item with the value returned by rTorrent '''
         def callback(rv): 
-            print rv
             row = self.FindItemData(-1, tag)
             if "formatter" in self._columns[col]:
                 rv = self._columns[col]['formatter'](rv)
