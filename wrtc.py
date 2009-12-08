@@ -16,6 +16,7 @@ NAME_OF_THIS_APP = 'wrTc'
 WRTC_OSX = (os.uname()[0] == 'Darwin')
 
 def format_bytes(bytes, characters=5):
+    ''' prettifies sizes given in bytes '''
     units = ("B", "KB", "MB", "GB", "TB")
     bytes = float(bytes)
     for unit in units:
@@ -25,26 +26,29 @@ def format_bytes(bytes, characters=5):
     return str(round(bytes,2))+unit
 
 def make_hash(tdata):
+    ''' Creates an infohash for the given torrent data, used when loading torrents '''
     from bencode import bdecode, bencode
     from hashlib import sha1
     return sha1(bencode(bdecode(tdata)['info'])).hexdigest().upper()
 
 class SettingsManager():
-    def __init__(self, defaults={'rtorrent url': 'http://localhost/RPC2', 'remote root': '/'}, config_path=None):
+    ''' Wraps a ConfigParser and shows a nice little dialog  '''
+    def __init__(self, filename, defaults={}):
         self.cfg = ConfigParser(defaults)
-        if not config_path:
-            config_path = self.get_default_config_path()
-        self.cfg.read(config_path)
-        self.config_path = config_path
+        self.filename = filename
+        self.config_path = self.get_config_path()
+        self.cfg.read(self.config_path)
 
-    def get(self, setting):
-        return self.cfg.get("DEFAULT", setting)
+    def get(self, *args):
+        if not args: return None
+        if len(args) > 1: return self.cfg.get(*args)
+        return self.cfg.get("DEFAULT", args[0])
 
-    def get_default_config_path(self):
+    def get_config_path(self):
         if os.name == 'nt':
-            return os.path.expanduser("~\AppData\Local\wrtc.rc")
+            return os.path.expanduser("~/AppData/Local/%s" % self.filename)
         else:
-            return os.path.expanduser("~/.config/wrtc.rc")
+            return os.path.expanduser("~/.config/%s" % self.filename)
 
     def show_dialog(self, evt=None):
         self.dlg = wx.Dialog(None, title="Settings")
@@ -80,7 +84,10 @@ class SettingsManager():
 
 class wrtcApp(wx.App):
     def __init__(self, *args, **kwargs):
-        self.settings_manager = SettingsManager()
+        self.settings_manager = SettingsManager(NAME_OF_THIS_APP+'.cfg', {
+            'rtorrent url': 'http://localhost/RPC2', 
+            'remote root': '/'
+        })
         self.daemon = XMLRPCDaemon(self.settings_manager.get("rTorrent URL"))
         self.daemon.start()
         wx.App.__init__(self, *args, **kwargs)
@@ -368,6 +375,7 @@ class UpdateScheduler(threading.Thread):
             self.remote_queue.append(job)
 
 class LoadTorrentDialog(wx.Dialog):
+    ''' Dialog that loads torrents from disk/URL '''
     def __init__(self, remote_root):
         wx.Dialog.__init__(self, None, title="Load torrent", size=(400,400))
         BORDER = 3
@@ -425,7 +433,7 @@ class LoadTorrentDialog(wx.Dialog):
 
 if __name__ == "__main__":
     app = wrtcApp(False)
+    # Show configuration window on first run
     if not os.path.isfile(app.settings_manager.config_path):
         app.settings_manager.show_dialog()
-    
     app.MainLoop()
