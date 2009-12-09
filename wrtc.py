@@ -6,6 +6,7 @@ Author: Stephen Sugden (grncdr)
 Description: This is a little app that connects to and monitors a remote rTorrent via xmlrpc. It can also upload local torrent files to a remote machine
 '''
 
+from __future__ import with_statement
 import os, sys, threading, wx, time
 from ConfigParser import ConfigParser
 from wx.lib.mixins.listctrl import ListCtrlAutoWidthMixin
@@ -74,11 +75,8 @@ class SettingsManager():
     def save(self, evt):
         for setting, control in self.controls:
             self.cfg.set("DEFAULT", setting, str(control.GetValue()))
-        try:
-            fh = open(self.config_path,'wb')
+        with open(self.config_path,'wb') as fh:
             self.cfg.write(fh)
-        finally:
-            fh.close()
         wx.GetApp().daemon.open(self.cfg.get("DEFAULT",'rTorrent URL'))
         self.dlg.Close()
 
@@ -357,20 +355,17 @@ class UpdateScheduler(threading.Thread):
         while self.proceed:
             job_list = self.notebook.GetCurrentPage().joblist
             immediate = job_list.get(0, clear=True)
-            self.add_jobs(immediate)
+            for job in immediate:
+                self.remote_queue.appendleft(job)
             now = int(time.time())
             if len(job_list) == 0:
                 time.sleep(1)
                 continue
             for i in job_list.keys():
                 if not (now % i):
-                    list = job_list.get(i)
-                    self.add_jobs(list)
+                    for job in job_list.get(i):
+                        self.remote_queue.append(job)
             time.sleep(1)
-
-    def add_jobs(self, list):
-        for job in list:
-            self.remote_queue.append(job)
 
 class LoadTorrentDialog(wx.Dialog):
     ''' Dialog that loads torrents from disk/URL '''
