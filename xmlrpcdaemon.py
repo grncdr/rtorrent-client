@@ -52,8 +52,7 @@ class XMLRPCDaemon(threading.Thread):
         except ProtocolError, e:
             print e.errcode, "-", e.url.split('@').pop(), '-', command
             return False
-        except:
-            return False
+
         if callback:
             callback(response)
         return True
