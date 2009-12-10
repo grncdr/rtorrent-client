@@ -8,7 +8,7 @@ Description: This is a little app that connects to and monitors a remote rTorren
 
 from __future__ import with_statement
 import os, sys, threading, wx, time
-from wx.lib.mixins.listctrl import ListCtrlAutoWidthMixin
+from ObjectListView import ObjectListView, ColumnDefn
 from settings_manager import SettingsManager
 import xmlrpcdaemon 
 from xmlrpclib import Binary
@@ -17,7 +17,7 @@ from multiqueue import MultiQueue
 NAME_OF_THIS_APP = 'wrTc'
 WRTC_OSX = (os.uname()[0] == 'Darwin')
 
-def format_bytes(bytes, characters=5):
+def format_bytes(bytes):
     ''' prettifies sizes given in bytes '''
     units = ("B", "KB", "MB", "GB", "TB")
     bytes = float(bytes)
@@ -160,82 +160,32 @@ class rTorrentNotebook(wx.Notebook):
         self.GetPage(evt.GetSelection()).get_list()
         evt.Skip()
 
-class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
-    _columns = [
-        {
-            "label": "Name", 
-            "command": "d.get_name",
-            'width': 200, 
-            "default": "Loading torrent data...",
-            "frequency": 0,
-        }, 
-        {
-            "label": "Up Rate",
-            "command": "d.get_up_rate",
-            "default": "N/A",
-            "formatter": format_bytes,
-        },
-        {
-            "label": "Down Rate",
-            "command": "d.get_down_rate",
-            "default": "N/A",
-            "formatter": format_bytes,
-        },
-        {
-            "label": "Size",
-            "command": "d.get_size_bytes",
-            "default": "N/A",
-            "formatter": format_bytes,
-            "frequency": 0,
-        },
-        {
-            "label": "Uploaded",
-            "command": "d.get_up_total",
-            "default": "N/A",
-            "formatter": format_bytes,
-        },
-        {
-            "label": "Downloaded",
-            "command": "d.get_bytes_done",
-            "default": "N/A",
-            "formatter": format_bytes,
-        },
-        {
-            "label": "Ratio",
-            "command": "d.get_ratio",
-            "formatter": lambda p: str(p)+"%",
-            "default": "N/A",
-            "width": 45,
-            "default": "N/A", 
-            "frequency": 20,
-        },
-        {
-            "label": "S",
-            "command": "d.get_peers_complete",
-            "width": 25,
-            "default": "N/A",
-            "frequency": 20
-        },
-        {
-            "label": "P",
-            "command": "d.get_peers_accounted",
-            "width": 25,
-            "default": "N/A",
-            "frequency": 9
-        },
+class rTorrentView(wx.Window):
+    __columns = [
     ]
     def __init__(self, parent, title="default"):
-        wx.ListView.__init__(self, parent)
-        sizer = wx.BoxSizer(wx.VERTICAL)
+        wx.Window.__init__(self, parent)
+        sizer = wx.BoxSizer()
+        self.SetSizer(sizer)
+        self.olv = ObjectListView(self, style=wx.LC_REPORT)
+        self.olv.SetEmptyListMsg("No torrents")
+        self.olv.SetColumns([
+            ColumnDefn("Name", valueGetter="name", isSpaceFilling=True, minimumWidth=100),
+            ColumnDefn("Up Rate", "right", 100, "up_rate", stringConverter=format_bytes),
+            ColumnDefn("Down Rate", "right", 100, "down_rate", stringConverter=format_bytes),
+            ColumnDefn("Size", "right", 100, "size_bytes", stringConverter=format_bytes),
+            ColumnDefn("Uploaded", "right", 100, "up_total", stringConverter=format_bytes),
+            ColumnDefn("Downloaded", "right", 100, "bytes_done", stringConverter=format_bytes),
+            ColumnDefn("Ratio", "right", fixedWidth=40, valueGetter="ratio", stringConverter="%s%"),
+            #ColumnDefn("S", "center", 25, "peers_complete"),
+            #ColumnDefn("P", "center", 25, "peers_accounted"),
+        ])
+        sizer.add(self.olv)
         self.tag_map = {}
         self.title = title
+        self.torrents = []
         for column in self._columns:
             self.InsertColumn(self.GetColumnCount(), column['label'])
-        ListCtrlAutoWidthMixin.__init__(self)
-        if WRTC_OSX:
-            self.setResizeColumn(1)
-        else:
-            self.setResizeColumn(0)
         print "self.joblist = MultiQueue()"
         self.joblist = MultiQueue()
         print 'self.joblist.put(5, ("download_list", self.title, self.set_list))'
@@ -298,6 +248,11 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
         if dlg.ShowModal() == wx.ID_OK:
             print 'Not implemented'
         dlg.Destroy()
+
+class Torrent(object):
+    """basically a set of properties for OLV"""
+    def __init__(self, infohash, name ):
+        self.infohash, name  = infohash, name 
 
 class UpdateScheduler(threading.Thread):
     ''' This thread reads the joblist for the current view, 

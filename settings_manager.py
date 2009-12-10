@@ -1,3 +1,4 @@
+from __future__ import with_statement
 from ConfigParser import ConfigParser
 import os, wx
 class SettingsManager():
