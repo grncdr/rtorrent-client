@@ -1,57 +1,73 @@
+from __future__ import with_statement
 import threading
-from xmlrpclib import ServerProxy, Binary, ProtocolError
+import xmlrpclib 
+import socket # For exception handling
 import time
-from collections import deque
+from Queue import Queue
 
 class XMLRPCDaemon(threading.Thread):
     def __init__(self, url):
         threading.Thread.__init__(self)
         self.connected = False
         self.setDaemon(True)
-        self.jobs = deque()
+        self.jobs = Queue()
         self.proceed = True
-        self.open(url)
+        self.url = url
 
     def open(self, url):
         self.url = url
         self.connected = False
-        self.proxy = ServerProxy(url)
-        self.remote_request(('system.client_version', '', self._set_connected))
+        self.proxy = xmlrpclib.ServerProxy(url)
+        self._remote_request(('system.client_version', '', self._set_connected))
 
     def _set_connected(self, version):
-        self.started = int(time.time())
         self.connected = True
+
+    def clear(self):
+        with self.jobs.mutex:
+            self.jobs.queue.clear()
+        return None # Stub
+
+    def put(self, job):
+        self.jobs.put(job)
+
+    def put_first(self, job):
+        with self.jobs.mutex:
+            self.jobs.queue.appendleft(job)
 
     def run(self):
         while self.proceed:
             if not self.connected:
                 self.open(self.url)
-                time.sleep(5)
             else:
                 try:
-                    job = self.jobs.popleft()
+                    job = self.jobs.get()
                 except IndexError:
                     time.sleep(1)
                     continue
-                if not self.remote_request(job): 
-                    self.jobs.append(job)
+                if not self._remote_request(job): 
+                    self.jobs.put(job)
 
-    def remote_request(self,job):
+    def _remote_request(self,job):
         if len(job) == 3:
             command, argument, callback = job
         elif len(job) == 2:
             callback = False
             command, argument = job
         try:
-            if command == 'd.set_directory':
-                print 'Setting directory:', argument
             if type(argument) == tuple:
                 response = getattr(self.proxy, command)(*argument)
             else:
                 response = getattr(self.proxy, command)(argument)
-        except ProtocolError, e:
+        except xmlrpclib.ProtocolError, e:
             print e.errcode, "-", e.url.split('@').pop(), '-', command
             return False
+        except socket.gaierror:
+            self._connected = False
+            return False
+        #except xmlrpclib.error:
+        #    print error
+        #    return False
 
         if callback:
             callback(response)

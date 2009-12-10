@@ -10,7 +10,8 @@ from __future__ import with_statement
 import os, sys, threading, wx, time
 from wx.lib.mixins.listctrl import ListCtrlAutoWidthMixin
 from settings_manager import SettingsManager
-from xmlrpcdaemon import XMLRPCDaemon, Binary
+import xmlrpcdaemon 
+from xmlrpclib import Binary
 from multiqueue import MultiQueue
 
 NAME_OF_THIS_APP = 'wrTc'
@@ -38,11 +39,11 @@ class wrtcApp(wx.App):
             'rtorrent url': 'http://localhost/RPC2', 
             'remote root': '/'
         })
-        self.daemon = XMLRPCDaemon(self.settings_manager.get("rTorrent URL"))
-        self.daemon.start()
+        self.rtorrent = xmlrpcdaemon.XMLRPCDaemon(self.settings_manager.get("rTorrent URL"))
+        self.rtorrent.start()
         wx.App.__init__(self, *args, **kwargs)
-        self.refresher_thread = UpdateScheduler(self)
-        self.refresher_thread.start()
+        self.updater = UpdateScheduler(self)
+        self.updater.start()
         self.Bind(wx.EVT_ACTIVATE_APP, self.activate)
 
     def OnInit(self):
@@ -92,10 +93,10 @@ class wrtcApp(wx.App):
         def dest_callback(rv):
             def start_callback(rv):
                 if start:
-                    self.daemon.jobs.append(('d.start', infohash))
-            self.daemon.jobs.append(('d.set_directory', (infohash, dest), 
+                    self.rtorrent.put(('d.start', infohash))
+            self.rtorrent.put(('d.set_directory', (infohash, dest), 
                                start_callback))
-        self.daemon.jobs.append(('load_raw', torrent_data, dest_callback))
+        self.rtorrent.put(('load_raw', torrent_data, dest_callback))
 
 class MainWindow(wx.Frame):
     def __init__(self, parent, id, title):
@@ -119,7 +120,7 @@ class MainWindow(wx.Frame):
 
         self.SetMenuBar(self.menu_bar)
 
-        self.notebook = TorrentsNotebook(self)
+        self.notebook = rTorrentNotebook(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 10)
         self.SetSizer(main_sizer)
@@ -136,15 +137,14 @@ class MainWindow(wx.Frame):
         dlg.ShowModal()
 
     def on_exit(self,e):
-        wx.GetApp().daemon.proceed = False
-        wx.GetApp().refresher_thread.proceed = False
+        wx.GetApp().updater.proceed = False
         self.Show(False)
-        wx.GetApp().daemon.join()
-        wx.GetApp().refresher_thread.join()
+        wx.GetApp().updater.join()
+        wx.GetApp().rtorrent.jobs.join()
         self.Destroy()
 
 
-class TorrentsNotebook(wx.Notebook):
+class rTorrentNotebook(wx.Notebook):
     def __init__(self, parent, *args, **kwargs):
         wx.Notebook.__init__(self, parent, *args, **kwargs)
         self.views_to_load = ["incomplete", "seeding", "stopped"]
@@ -157,7 +157,7 @@ class TorrentsNotebook(wx.Notebook):
             self.AddPage(rTorrentView(self, view), view.capitalize());
 
     def page_changed(self, evt):
-        self.GetPage(evt.GetSelection()).refresh()
+        self.GetPage(evt.GetSelection()).get_list()
         evt.Skip()
 
 class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
@@ -221,7 +221,7 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
             "command": "d.get_peers_accounted",
             "width": 25,
             "default": "N/A",
-            "frequency": 10
+            "frequency": 9
         },
     ]
     def __init__(self, parent, title="default"):
@@ -236,18 +236,18 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
             self.setResizeColumn(1)
         else:
             self.setResizeColumn(0)
+        print "self.joblist = MultiQueue()"
         self.joblist = MultiQueue()
-        self.joblist.put(0, ("download_list", self.title, self.set_list))
+        print 'self.joblist.put(5, ("download_list", self.title, self.set_list))'
         self.joblist.put(5, ("download_list", self.title, self.set_list))
 
     def __repr__(self):
         return "rTorrentView(wx.ListView) - "+self.title.capitalize()
 
-    def refresh(self):
+    def get_list(self):
         ''' Clear the queue and update the current page, called on page change '''
-        queue = wx.GetApp().daemon.jobs
-        queue.clear()
-        queue.append(('download_list', self.title, self.set_list ))
+        print 'self.joblist.put(0, ("download_list", self.title, self.set_list))'
+        self.joblist.put(0, ("download_list", self.title, self.set_list))
 
     def set_list(self, hashlist):
         ''' Given a list of infohashes, add and remove torrents from the listctrl as necessary '''
@@ -255,6 +255,7 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
         rmList = [tag for (tag, hash) in self.tag_map.items() if hash not in hashlist] 
         for id in rmList:
             self.DeleteItem(self.FindItemData(-1, id))
+            print 'self.joblist.remove(lambda job: job[1] == self.tag_map[id])'
             self.joblist.remove(lambda job: job[1] == self.tag_map[id])
             del(self.tag_map[id])
         for infohash in addList:
@@ -272,7 +273,8 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
                 f = c['frequency']
             else:
                 f = 3
-            self.joblist.put(f, (c['command'], infohash, self.make_callback(tag, i)))
+            print 'self.joblist.put(', f, '(', c["command"], infohash, 'self.make_callback(', tag, i,')))'
+            self.joblist.put(f, (c["command"], infohash, self.make_callback(tag, i)))
 
     def make_callback(self, tag, col):
         ''' Returns a function that will update the given list item with the value returned by rTorrent '''
@@ -283,8 +285,11 @@ class rTorrentView(ListCtrlAutoWidthMixin, wx.ListView):
             else:
                 rv = str(rv)
             try: # Occasionally we try to update an item after it has been removed
+                print "Setting result", row, col, rv
                 self.SetStringItem(row, col, rv)
+                assert self.GetItem(row, col).GetText() == rv
             except wx.PyAssertionError: #Wish this threw something a bit less generic...
+                print "Failed to set result", row, col, rv
                 return
         return callback
                 
@@ -300,23 +305,24 @@ class UpdateScheduler(threading.Thread):
     def __init__(self, app):
         threading.Thread.__init__(self)
         self.notebook = app.frame.notebook
-        self.remote_queue = app.daemon.jobs
+        self.rtorrent = app.rtorrent
         self.proceed = True
     
     def run(self):
         while self.proceed:
-            job_list = self.notebook.GetCurrentPage().joblist
-            immediate = job_list.get(0, clear=True)
+            print 'joblist = self.notebook.GetCurrentPage().joblist'
+            joblist = self.notebook.GetCurrentPage().joblist
+            print 'immediate = joblist.get(0, clear=True)'
+            immediate = joblist.get(0, clear=True)
             for job in immediate:
-                self.remote_queue.appendleft(job)
+                self.rtorrent.put_first(job)
             now = int(time.time())
-            if len(job_list) == 0:
-                time.sleep(1)
-                continue
-            for i in job_list.keys():
+            print 'for i in joblist.keys():'
+            for i in joblist.keys():
                 if not (now % i):
-                    for job in job_list.get(i):
-                        self.remote_queue.append(job)
+                    print 'for job in joblist.get(i):'
+                    for job in joblist.get(i):
+                        self.rtorrent.put(job)
             time.sleep(1)
 
 class LoadTorrentDialog(wx.Dialog):

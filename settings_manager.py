@@ -1,5 +1,5 @@
 from ConfigParser import ConfigParser
-import wx
+import os, wx
 class SettingsManager():
     ''' Wraps a ConfigParser and shows a nice little dialog  '''
     def __init__(self, filename, defaults={}):
