@@ -3,7 +3,9 @@
 '''
 File: wrTc.py
 Author: Stephen Sugden (grncdr)
-Description: This is a little app that connects to and monitors a remote rTorrent via xmlrpc. It can also upload local torrent files to a remote machine
+Description: This is a little app that connects to and monitors a remote 
+             rTorrent via xmlrpc. It can also upload local torrent files to a 
+             remote machine
 '''
 
 from __future__ import with_statement
@@ -14,8 +16,9 @@ import xmlrpcdaemon
 from xmlrpclib import Binary
 from multiqueue import MultiQueue
 
-NAME_OF_THIS_APP = 'wrTc'
-WRTC_OSX = (os.uname()[0] == 'Darwin')
+APP_NAME = 'wrTc'
+WRTC_OSX = hasattr(os, 'uname') and (os.uname()[0] == 'Darwin')
+VIEW_LIST = ["incomplete", "seeding", "stopped"]
 
 def format_bytes(bytes):
     ''' prettifies sizes given in bytes '''
@@ -28,18 +31,23 @@ def format_bytes(bytes):
     return str(round(bytes,2))+unit
 
 def make_hash(tdata):
-    ''' Creates an infohash for the given torrent data, used when loading torrents '''
+    ''' Create an infohash for the given torrent data '''
     from bencode import bdecode, bencode
     from hashlib import sha1
     return sha1(bencode(bdecode(tdata)['info'])).hexdigest().upper()
 
 class wrtcApp(wx.App):
     def __init__(self, *args, **kwargs):
-        self.settings_manager = SettingsManager(NAME_OF_THIS_APP+'.cfg', {
+        def settings_save_callback(*args, **kwargs):
+            self.rtorrent.open(self.cfg.get("DEFAULT",'rTorrent URL'))
+
+        self.settings_manager = SettingsManager(APP_NAME+'.cfg', {
             'rtorrent url': 'http://localhost/RPC2', 
             'remote root': '/'
-        })
-        self.rtorrent = xmlrpcdaemon.XMLRPCDaemon(self.settings_manager.get("rTorrent URL"))
+        }, settings_save_callback)
+
+        self.rtorrent = xmlrpcdaemon.XMLRPCDaemon( # Can't shorten this one!
+            self.settings_manager.get("rTorrent URL"))
         self.rtorrent.start()
         wx.App.__init__(self, *args, **kwargs)
         self.updater = UpdateScheduler(self)
@@ -47,17 +55,16 @@ class wrtcApp(wx.App):
         self.Bind(wx.EVT_ACTIVATE_APP, self.activate)
 
     def OnInit(self):
-        self.frame = MainWindow(None, wx.ID_ANY, NAME_OF_THIS_APP+" - wxPython rTorrent client") 
+        self.frame = MainWindow(None, wx.ID_ANY, 
+                                APP_NAME+" - wxPython rTorrent client") 
         self.frame.Show()
         if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
             self.load_torrent(filename=sys.argv[1])
         return True
 
     def raise_frame(self):
-        try: 
-            self.frame.Raise()
-        except:
-            pass
+        try: self.frame.Raise()
+        except: pass
 
     def activate(self, evt):
         if evt.GetActive():
@@ -108,19 +115,20 @@ class MainWindow(wx.Frame):
         self.file_menu.Append(wx.ID_OPEN, "Add &Torrent")
         self.Bind(wx.EVT_MENU, wx.GetApp().load_torrent, id=wx.ID_OPEN)
         self.file_menu.Append(wx.ID_PREFERENCES, "&Preferences")
-        self.Bind(wx.EVT_MENU, wx.GetApp().settings_manager.show_dialog, id=wx.ID_PREFERENCES)
+        self.Bind(wx.EVT_MENU, wx.GetApp().settings_manager.show_dialog, 
+                  id=wx.ID_PREFERENCES)
         self.file_menu.Append(wx.ID_EXIT, "&Quit")
         self.Bind(wx.EVT_MENU, self.on_exit, id=wx.ID_EXIT)
         self.menu_bar.Append(self.file_menu, "&File")
 
         self.help_menu = wx.Menu()
-        self.help_menu.Append(wx.ID_ABOUT, "&About "+NAME_OF_THIS_APP)
+        self.help_menu.Append(wx.ID_ABOUT, "&About "+APP_NAME)
         self.Bind(wx.EVT_MENU, self.on_about_request, id=wx.ID_ABOUT)
         self.menu_bar.Append(self.help_menu, "&Help")
 
         self.SetMenuBar(self.menu_bar)
 
-        self.notebook = rTorrentNotebook(self)
+        self.notebook = rTorrentNotebook(self, VIEW_LIST)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 10)
         self.SetSizer(main_sizer)
@@ -133,126 +141,139 @@ class MainWindow(wx.Frame):
 #    ControlIcons = (Icons['play'], Icons['pause'])
 
     def on_about_request(self, evt):
-        dlg = wx.MessageDialog(self, "wxPython rTorrent client", NAME_OF_THIS_APP, wx.OK | wx.ICON_INFORMATION)
+        dlg = wx.MessageDialog(self, "wxPython rTorrent client", APP_NAME, 
+                               wx.OK | wx.ICON_INFORMATION)
         dlg.ShowModal()
 
     def on_exit(self,e):
         wx.GetApp().updater.proceed = False
+        wx.GetApp().rtorrent.proceed = False
         self.Show(False)
         wx.GetApp().updater.join()
-        wx.GetApp().rtorrent.jobs.join()
+        wx.GetApp().rtorrent.join()
         self.Destroy()
 
 
 class rTorrentNotebook(wx.Notebook):
-    def __init__(self, parent, *args, **kwargs):
+    def __init__(self, parent, views, *args, **kwargs):
         wx.Notebook.__init__(self, parent, *args, **kwargs)
-        self.views_to_load = ["incomplete", "seeding", "stopped"]
-        self.load_views()
+        self.load_views(views)
         self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.page_changed)
 
-    def load_views(self):
-        self.DeleteAllPages()
-        for view in self.views_to_load:
+    def load_views(self, views):
+        for view in views:
             self.AddPage(rTorrentView(self, view), view.capitalize());
+        self.GetCurrentPage().get_list()
 
     def page_changed(self, evt):
         self.GetPage(evt.GetSelection()).get_list()
         evt.Skip()
 
-class rTorrentView(wx.Window):
-    __columns = [
+class rTorrentView(wx.NotebookPage):
+    _columns = [
+        ColumnDefn("Name", valueGetter="name", isSpaceFilling=True, 
+                   minimumWidth=100, maximumWidth=300),
+        ColumnDefn("Up", "right", 70, "up_rate", stringConverter=format_bytes),
+        ColumnDefn("Down", "right", 70, "down_rate", 
+                   stringConverter=format_bytes),
+        ColumnDefn("Size", "right", 70, "size_bytes", 
+                   stringConverter=format_bytes),
+        ColumnDefn("Up Total", "right", 80, "up_total", 
+                   stringConverter=format_bytes),
+        ColumnDefn("Down Total", "right", 80, "bytes_done", 
+                   stringConverter=format_bytes),
+        ColumnDefn("Ratio", "right", fixedWidth=40, valueGetter="ratio", 
+                   stringConverter="%s%%"),
+        #ColumnDefn("S", "center", 25, "peers_complete"),
+        #ColumnDefn("P", "center", 25, "peers_accounted"),
     ]
     def __init__(self, parent, title="default"):
-        wx.Window.__init__(self, parent)
-        sizer = wx.BoxSizer()
-        self.SetSizer(sizer)
-        self.olv = ObjectListView(self, style=wx.LC_REPORT)
-        self.olv.SetEmptyListMsg("No torrents")
-        self.olv.SetColumns([
-            ColumnDefn("Name", valueGetter="name", isSpaceFilling=True, minimumWidth=100),
-            ColumnDefn("Up Rate", "right", 100, "up_rate", stringConverter=format_bytes),
-            ColumnDefn("Down Rate", "right", 100, "down_rate", stringConverter=format_bytes),
-            ColumnDefn("Size", "right", 100, "size_bytes", stringConverter=format_bytes),
-            ColumnDefn("Uploaded", "right", 100, "up_total", stringConverter=format_bytes),
-            ColumnDefn("Downloaded", "right", 100, "bytes_done", stringConverter=format_bytes),
-            ColumnDefn("Ratio", "right", fixedWidth=40, valueGetter="ratio", stringConverter="%s%"),
-            #ColumnDefn("S", "center", 25, "peers_complete"),
-            #ColumnDefn("P", "center", 25, "peers_accounted"),
-        ])
-        sizer.add(self.olv)
-        self.tag_map = {}
         self.title = title
         self.torrents = []
-        for column in self._columns:
-            self.InsertColumn(self.GetColumnCount(), column['label'])
-        print "self.joblist = MultiQueue()"
         self.joblist = MultiQueue()
-        print 'self.joblist.put(5, ("download_list", self.title, self.set_list))'
+        wx.NotebookPage.__init__(self, parent)
+
+        self.olv = ObjectListView(self, style=wx.LC_REPORT, sortable=False)
+        self.olv.SetEmptyListMsg("No torrents")
+        self.olv.SetColumns(self._columns)
         self.joblist.put(5, ("download_list", self.title, self.set_list))
 
     def __repr__(self):
-        return "rTorrentView(wx.ListView) - "+self.title.capitalize()
+        return "<rTorrentView '%s'>" % self.title.capitalize()
 
     def get_list(self):
-        ''' Clear the queue and update the current page, called on page change '''
-        print 'self.joblist.put(0, ("download_list", self.title, self.set_list))'
+        ''' Clear the queue and update the current page. 
+        Called on page change '''
         self.joblist.put(0, ("download_list", self.title, self.set_list))
 
     def set_list(self, hashlist):
-        ''' Given a list of infohashes, add and remove torrents from the listctrl as necessary '''
-        addList = [val for val in hashlist if val not in self.tag_map.values()]
-        rmList = [tag for (tag, hash) in self.tag_map.items() if hash not in hashlist] 
-        for id in rmList:
-            self.DeleteItem(self.FindItemData(-1, id))
-            print 'self.joblist.remove(lambda job: job[1] == self.tag_map[id])'
-            self.joblist.remove(lambda job: job[1] == self.tag_map[id])
-            del(self.tag_map[id])
-        for infohash in addList:
-            self.add_torrent(infohash)
+        ''' Given a list of infohashes, add and remove torrents 
+        from the torrents list as necessary '''
+        self.torrents = [self.find_torrent(ih) for ih in hashlist]
+        self.olv.SetObjects(self.torrents)
+        for t in self.torrents:
+            self.full_refresh(t)
         
-    def add_torrent(self, infohash):
-        ''' Add a new torrent to the listctrl '''
-        tag = wx.NewId()
-        self.tag_map[tag] = infohash
-        self.Append([c['default'] for c in self._columns])
-        self.SetItemData(self.GetItemCount()-1, tag)
-        for (i, c) in zip(range(len(self._columns)), self._columns):
-            self.SetStringItem(0, i, c['default'])
-            if 'frequency' in c:
-                f = c['frequency']
-            else:
-                f = 3
-            print 'self.joblist.put(', f, '(', c["command"], infohash, 'self.make_callback(', tag, i,')))'
-            self.joblist.put(f, (c["command"], infohash, self.make_callback(tag, i)))
+    def find_torrent(self, infohash):
+        for t in self.torrents:
+            if t.infohash == infohash:
+                return t
+        t = Torrent(self.title, infohash)
+        for p in [k for k in t.__dict__.keys() if k not in ignore_list]:
+            self.joblist.put(3, job)
+        return t
 
-    def make_callback(self, tag, col):
-        ''' Returns a function that will update the given list item with the value returned by rTorrent '''
+    def refresh_torrent(self, t):
+        ignore_list = ['infohash', 'static', 'new', 'job', 'callback']
+        if not t.new:
+            ignore_list.extend(t.static)
+
+    def make_callback(self, torrent, key):
+        ''' Returns a function that will update the given list object 
+        with the value returned by rTorrent '''
         def callback(rv): 
-            row = self.FindItemData(-1, tag)
-            if "formatter" in self._columns[col]:
-                rv = self._columns[col]['formatter'](rv)
-            else:
-                rv = str(rv)
-            try: # Occasionally we try to update an item after it has been removed
-                print "Setting result", row, col, rv
-                self.SetStringItem(row, col, rv)
-                assert self.GetItem(row, col).GetText() == rv
-            except wx.PyAssertionError: #Wish this threw something a bit less generic...
-                print "Failed to set result", row, col, rv
-                return
+            setattr(torrent, key, rv)
+            torrent.new = False
+            self.olv.RefreshObject(torrent)
         return callback
                 
     def on_erase(self, e):
-        dlg = wx.MessageDialog(self, "Are you sure you want to remove this torrent?", "Delete torrent", wx.OK | wx.CANCEL | wx.ICON_QUESTION)
+        dlg = wx.MessageDialog(self, "Remove this torrent?", "Delete torrent", 
+                               wx.OK | wx.CANCEL | wx.ICON_QUESTION)
         if dlg.ShowModal() == wx.ID_OK:
-            print 'Not implemented'
+            print 'on_erase Not implemented'
         dlg.Destroy()
 
 class Torrent(object):
     """basically a set of properties for OLV"""
-    def __init__(self, infohash, name ):
-        self.infohash, name  = infohash, name 
+    def __init__(self, view, infohash):
+        self.infohash  = infohash 
+        self.name = "Loading torrent data..."
+        self.up_rate = self.down_rate = self.ratio = self.size_bytes = 0
+        self.bytes_done = self.up_total = 0
+        # Don't update these properties after getting them initially
+        self.static = ['name', 'size_bytes'] 
+        self.new = True # Set to false when torrent is first refreshed
+        if view == 'stopped':
+            self.static.extend(self.__dict__.keys())
+        elif view == 'seeding':
+            self.static.append('down_rate')
+
+    def job(self, key):
+        return ("d.get_"+key, self.infohash, self.make_callback(key))
+        
+    def callback(self, key):
+        def callback(rv): 
+            setattr(self, key, rv)
+            self.new = False
+        return callback
+        
+
+    def __repr__(self):
+        return "<Torrent - %s>" % self.name
+
+    def __eq__(self, other):
+        return (self.infohash == other.infohash)
 
 class UpdateScheduler(threading.Thread):
     ''' This thread reads the joblist for the current view, 
@@ -265,17 +286,14 @@ class UpdateScheduler(threading.Thread):
     
     def run(self):
         while self.proceed:
-            print 'joblist = self.notebook.GetCurrentPage().joblist'
             joblist = self.notebook.GetCurrentPage().joblist
-            print 'immediate = joblist.get(0, clear=True)'
-            immediate = joblist.get(0, clear=True)
-            for job in immediate:
-                self.rtorrent.put_first(job)
-            now = int(time.time())
-            print 'for i in joblist.keys():'
             for i in joblist.keys():
-                if not (now % i):
-                    print 'for job in joblist.get(i):'
+                if not i:    # i == 0
+                    for job in joblist.get(i, clear=True):
+                        self.rtorrent.put_first(job)
+                    now = int(time.time())
+                elif not (now % i):
+                    #print 'for job in joblist.get(i):'
                     for job in joblist.get(i):
                         self.rtorrent.put(job)
             time.sleep(1)
@@ -330,7 +348,8 @@ class LoadTorrentDialog(wx.Dialog):
 
     def on_browse(self,e):
         ''' Open a file'''
-        dlg = wx.FileDialog(self, "Choose a file", os.getcwd(), "", "*.torrent", wx.OPEN)
+        dlg = wx.FileDialog(self, "Choose a file", os.getcwd(), "", 
+                            "*.torrent", wx.OPEN)
         if dlg.ShowModal() == wx.ID_OK:
             self.filename=dlg.GetFilename()
             self.dirname=dlg.GetDirectory()

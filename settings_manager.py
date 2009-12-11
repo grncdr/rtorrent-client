@@ -3,11 +3,12 @@ from ConfigParser import ConfigParser
 import os, wx
 class SettingsManager():
     ''' Wraps a ConfigParser and shows a nice little dialog  '''
-    def __init__(self, filename, defaults={}):
+    def __init__(self, filename, defaults={}, save_callback=None):
         self.cfg = ConfigParser(defaults)
         self.filename = filename
         self.config_path = self.get_config_path()
         self.cfg.read(self.config_path)
+        self.save_callback = save_callback
 
     def get(self, *args):
         if not args: return None
@@ -46,5 +47,6 @@ class SettingsManager():
             self.cfg.set("DEFAULT", setting, str(control.GetValue()))
         with open(self.config_path,'wb') as fh:
             self.cfg.write(fh)
-        wx.GetApp().daemon.open(self.cfg.get("DEFAULT",'rTorrent URL'))
+        if self.save_callback():
+            self.save_callback()
         self.dlg.Close()

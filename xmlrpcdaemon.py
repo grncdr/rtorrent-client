@@ -1,16 +1,17 @@
 from __future__ import with_statement
+import socket
 import threading
 import xmlrpclib 
 import socket # For exception handling
 import time
-from Queue import Queue
+import Queue
 
 class XMLRPCDaemon(threading.Thread):
     def __init__(self, url):
         threading.Thread.__init__(self)
         self.connected = False
-        self.setDaemon(True)
-        self.jobs = Queue()
+        #self.setDaemon(True)
+        self.jobs = Queue.Queue()
         self.proceed = True
         self.url = url
 
@@ -26,7 +27,6 @@ class XMLRPCDaemon(threading.Thread):
     def clear(self):
         with self.jobs.mutex:
             self.jobs.queue.clear()
-        return None # Stub
 
     def put(self, job):
         self.jobs.put(job)
@@ -37,16 +37,17 @@ class XMLRPCDaemon(threading.Thread):
 
     def run(self):
         while self.proceed:
-            if not self.connected:
-                self.open(self.url)
-            else:
+            if self.connected:
                 try:
-                    job = self.jobs.get()
-                except IndexError:
-                    time.sleep(1)
+                    job = self.jobs.get(True, 1)
+                except Queue.Empty:
                     continue
-                if not self._remote_request(job): 
+                if self._remote_request(job): 
                     self.jobs.put(job)
+                else:
+                    self.jobs.task_done()
+            else:
+                self.open(self.url)
 
     def _remote_request(self,job):
         if len(job) == 3:
@@ -54,6 +55,8 @@ class XMLRPCDaemon(threading.Thread):
         elif len(job) == 2:
             callback = False
             command, argument = job
+        else:
+            raise TypeError("Jobs must be of length 2 or 3")
         try:
             if type(argument) == tuple:
                 response = getattr(self.proxy, command)(*argument)
@@ -62,13 +65,17 @@ class XMLRPCDaemon(threading.Thread):
         except xmlrpclib.ProtocolError, e:
             print e.errcode, "-", e.url.split('@').pop(), '-', command
             return False
-        except socket.gaierror:
+        except socket.gaierror, e:
             self._connected = False
+            print e
             return False
-        #except xmlrpclib.error:
-        #    print error
-        #    return False
+        except socket.error, e:
+            self._connected = False
+            print e
+            time.sleep(10)
+            return False
 
         if callback:
             callback(response)
+
         return True
