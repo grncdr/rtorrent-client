@@ -9,8 +9,7 @@ class MultiQueue(object):
 
     def __len__(self):
         with self.lock:
-            length = len(self._lists)
-        return length
+            return len(self._lists)
 
     def __getitem__(self, i):
         return self.get(i)
@@ -18,7 +17,7 @@ class MultiQueue(object):
     def keys(self):
         with self.lock:
             keys = self._lists.keys()
-        return keys
+            return keys
 
     def put(self, i, job):
         with self.lock:
@@ -30,29 +29,30 @@ class MultiQueue(object):
     def get(self, i, clear=False):
         with self.lock:
             if i not in self._lists:
-                rv = []
+                return []
             else:
                 rv = list(self._lists[i])
                 if clear:
                     del(self._lists[i])
-        return rv
+                return rv
 
     def remove(self, test):
         with self.lock:
-            for list in self._lists.values():
-                for item in list:
+            for l in self._lists.values():
+                for item in l:
                     if test(item):
-                        list.remove(item)
+                        l.remove(item)
 
     def move(self, job, new_f):
-        rv = False
         with self.lock:
-            for list in self.jobs:
-                for (i, cjob) in zip(range(len(list)), list):
-                    if job[0:2] == cjob[0:2]:
-                        self.jobs[new_f].append(list.pop(i))
-                        rv = not rv
-        return rv
+            for l in self._lists.values():
+                for (i, cjob) in zip(range(len(l)), l):
+                    if i == new_f:
+                        continue
+                    if job == cjob:
+                        self.jobs[new_f].append(l.pop(i))
+                        return True
+        return False
 
     def clear(self):
         with self.lock:
