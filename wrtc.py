@@ -309,8 +309,8 @@ class Torrent(object):
             return "<Torrent - %s - %s>" % self.infohash, self.name
         return "<Torrent - %s>" % self.infohash
 
-#    def __eq__(self, other):
-#        return (self.infohash == other.infohash)
+    def __eq__(self, other):
+        return (self.infohash == other.infohash)
 
 class UpdateScheduler(threading.Thread):
     ''' This thread reads the joblist for the current view, 
@@ -374,7 +374,8 @@ class LoadTorrentDialog(wx.Dialog):
         sizer.Add(self.browser, 1, TEXT, BORDER)
               
         start_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.start_immediate = wx.CheckBox(self, label="Start on load")
+        self.start_immediate = wx.CheckBox(self, label="Start on load", )
+        self.start_immediate.SetValue(True)
         start_sizer.Add(self.start_immediate, 1, wx.ALL, BORDER)
 
         buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
