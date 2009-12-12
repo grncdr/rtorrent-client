@@ -42,10 +42,8 @@ class XMLRPCDaemon(threading.Thread):
                     job = self.jobs.get(True, 1)
                 except Queue.Empty:
                     continue
-                if self._remote_request(job): 
+                if not self._remote_request(job): 
                     self.jobs.put(job)
-                else:
-                    self.jobs.task_done()
             else:
                 self.open(self.url)
 
