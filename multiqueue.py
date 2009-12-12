@@ -3,7 +3,7 @@ import threading
 
 class MultiQueue(object):
     def __init__(self):
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self._lists = {}
         self.clear()
 
@@ -13,6 +13,10 @@ class MultiQueue(object):
 
     def __getitem__(self, i):
         return self.get(i)
+
+    def __repr__(self):
+        with self.lock:
+            return str(self._lists)
 
     def keys(self):
         with self.lock:
@@ -50,9 +54,13 @@ class MultiQueue(object):
                     if i == new_f:
                         continue
                     if job == cjob:
-                        self.jobs[new_f].append(l.pop(i))
+                        if new_f in self._lists:
+                            self._lists[new_f].append(l.pop(i))
+                        else:
+                            self._lists[new_f] = [l.pop(i)]
                         return True
-        return False
+            self.put(new_f, job)
+            return False
 
     def clear(self):
         with self.lock:
