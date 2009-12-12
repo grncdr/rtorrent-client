@@ -31,6 +31,9 @@ def format_bytes(bytes):
         bytes /= 1024
     return str(round(bytes,2))+unit
 
+def format_speed(bytes):
+    return format_bytes(bytes)+"/S"
+
 def make_hash(tdata):
     ''' Create an infohash for the given torrent data '''
     from bencode import bdecode, bencode
@@ -174,9 +177,9 @@ class rTorrentView(wx.NotebookPage):
     _columns = [
         ColumnDefn("Name", valueGetter="name", isSpaceFilling=True, 
                    minimumWidth=100, maximumWidth=300),
-        ColumnDefn("Up", "right", 70, "up_rate", stringConverter=format_bytes),
+        ColumnDefn("Up", "right", 70, "up_rate", stringConverter=format_speed),
         ColumnDefn("Down", "right", 70, "down_rate", 
-                   stringConverter=format_bytes),
+                   stringConverter=format_speed),
         ColumnDefn("Size", "right", 70, "size_bytes", 
                    stringConverter=format_bytes),
         ColumnDefn("Up Total", "right", 80, "up_total", 
