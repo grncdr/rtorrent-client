@@ -2,7 +2,7 @@ import wx
 class PathBrowser(wx.TreeCtrl):
     def __init__(self, parent, remote_root):
         wx.TreeCtrl.__init__(self, parent, size=(-1,200))
-        self.daemon = wx.GetApp().daemon
+        self.daemon = wx.GetApp().rtorrent
         self.remote_root = remote_root
         self.Bind(wx.EVT_TREE_ITEM_EXPANDING, self._on_expand)
         self._load_root()
