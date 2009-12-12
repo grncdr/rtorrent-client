@@ -279,8 +279,8 @@ class Torrent(object):
         
     def callback(self, key):
         def callback(rv): 
-            oldvalue = self.properties[key][0]
-            self.properties[key][0] = rv
+            oldvalue = self[key]
+            self[key] = rv
             self.dirty, self.new = True, False
             f = self.new_frequency(key, rv, oldvalue)
             if f:
