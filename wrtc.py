@@ -9,7 +9,7 @@ Description: This is a little app that connects to and monitors a remote
 '''
 
 from __future__ import with_statement
-import os, sys, threading, wx, time
+import os, sys, threading, wx, time, math
 from ObjectListView import ObjectListView, ColumnDefn
 from settings_manager import SettingsManager
 import xmlrpcdaemon 
@@ -19,6 +19,7 @@ from multiqueue import MultiQueue
 APP_NAME = 'wrTc'
 WRTC_OSX = hasattr(os, 'uname') and (os.uname()[0] == 'Darwin')
 VIEW_LIST = ["incomplete", "seeding", "stopped"]
+MAX_REFRESH_CYCLE = 30
 
 def format_bytes(bytes):
     ''' prettifies sizes given in bytes '''
@@ -39,7 +40,7 @@ def make_hash(tdata):
 class wrtcApp(wx.App):
     def __init__(self, *args, **kwargs):
         def settings_save_callback(*args, **kwargs):
-            self.rtorrent.open(self.cfg.get("DEFAULT",'rTorrent URL'))
+            self.rtorrent.open(self.settings_manager.get("DEFAULT",'rTorrent URL'))
 
         self.settings_manager = SettingsManager(APP_NAME+'.cfg', {
             'rtorrent url': 'http://localhost/RPC2', 
@@ -193,7 +194,7 @@ class rTorrentView(wx.NotebookPage):
         self.joblist = MultiQueue()
         wx.NotebookPage.__init__(self, parent)
 
-        self.olv = ObjectListView(self, style=wx.LC_REPORT, sortable=False)
+        self.olv = ObjectListView(self, style=wx.LC_REPORT)
         self.olv.SetEmptyListMsg("No torrents")
         self.olv.SetColumns(self._columns)
         self.joblist.put(5, ("download_list", self.title, self.set_list))
@@ -210,32 +211,17 @@ class rTorrentView(wx.NotebookPage):
         ''' Given a list of infohashes, add and remove torrents 
         from the torrents list as necessary '''
         self.torrents = [self.find_torrent(ih) for ih in hashlist]
-        self.olv.SetObjects(self.torrents)
-        for t in self.torrents:
-            self.full_refresh(t)
+        self.olv.AddObjects(filter(lambda to: to not in self.olv.GetObjects(), self.torrents))
         
     def find_torrent(self, infohash):
         for t in self.torrents:
             if t.infohash == infohash:
                 return t
-        t = Torrent(self.title, infohash)
-        for p in [k for k in t.__dict__.keys() if k not in ignore_list]:
-            self.joblist.put(3, job)
+        # else make a new torrent object
+        t = Torrent(self, infohash)
+        for k in t.properties:
+            self.joblist.put(t.properties[k][2], t.properties[k][1])
         return t
-
-    def refresh_torrent(self, t):
-        ignore_list = ['infohash', 'static', 'new', 'job', 'callback']
-        if not t.new:
-            ignore_list.extend(t.static)
-
-    def make_callback(self, torrent, key):
-        ''' Returns a function that will update the given list object 
-        with the value returned by rTorrent '''
-        def callback(rv): 
-            setattr(torrent, key, rv)
-            torrent.new = False
-            self.olv.RefreshObject(torrent)
-        return callback
                 
     def on_erase(self, e):
         dlg = wx.MessageDialog(self, "Remove this torrent?", "Delete torrent", 
@@ -247,33 +233,84 @@ class rTorrentView(wx.NotebookPage):
 class Torrent(object):
     """basically a set of properties for OLV"""
     def __init__(self, view, infohash):
+        self.view = view
         self.infohash  = infohash 
-        self.name = "Loading torrent data..."
-        self.up_rate = self.down_rate = self.ratio = self.size_bytes = 0
-        self.bytes_done = self.up_total = 0
+        self.dirty = False
+        self.properties = {
+            # 'property': [default_value, job_tuple, frequency]
+            'name': ["Loading torrent data...", None, 0],
+            'up_rate': [0, None, 0],
+            'down_rate': [0, None, 0],
+            'ratio': [0, None, 0],
+            'size_bytes': [0, None, 0],
+            'bytes_done': [0, None, 0],
+            'up_total': [0, None, 0],
+        }
+        for k in self.properties:
+            self.properties[k][1] = self.job(k)
+
         # Don't update these properties after getting them initially
         self.static = ['name', 'size_bytes'] 
         self.new = True # Set to false when torrent is first refreshed
-        if view == 'stopped':
-            self.static.extend(self.__dict__.keys())
-        elif view == 'seeding':
+        if view.title == 'stopped':
+            self.static.extend(self.properties.keys())
+        elif view.title == 'seeding':
             self.static.append('down_rate')
 
+    def __getitem__(self, k):
+        """ We stick this in so that ObjectListView thinks it's got a normal dictionary """
+        if k in self.properties:
+            if self.properties[k]:
+                return self.properties[k][0]
+            #else:
+        else:
+            raise KeyError(k)
+            
     def job(self, key):
-        return ("d.get_"+key, self.infohash, self.make_callback(key))
+        if not self.properties[key][1]:
+            self.properties[key][1] = ("d.get_"+key, self.infohash, self.callback(key))
+        return self.properties[key][1]
         
     def callback(self, key):
         def callback(rv): 
-            setattr(self, key, rv)
-            self.new = False
+            #print "Setting %s to %s for %s" % (key, str(rv), str(self))
+            oldvalue = self.properties[key][0]
+            self.properties[key][0] = rv
+            self.dirty, self.new = True, False
+            f = self.new_frequency(key, rv, oldvalue)
+            if f:
+                self.view.joblist.move(self.properties[key][1], f)
         return callback
-        
+
+    def new_frequency(self, key, new, old):
+        """calculates the frequency at which the given key should be updated"""
+        if key in self.static:
+            return False # do not update this key again
+        old_frequency = self.properties[key][2]
+        if   key[-4:] == "rate":
+            if new == 0: # No transfer happening
+                if old_frequency: # not the first time we've updated
+                    # slow things down
+                    return max(MAX_REFRESH_CYCLE, int(old_frequency * 1.3))
+                else:
+                    return 5
+            else: # Transfer is happening, update more frequently
+                return 2
+        elif key == "bytes_done":
+            if self.properties["down_rate"][0] > 0: # this torrent is transferring data
+                # How long we estimate it will take for a visible 0.01 increase
+                return max(1, int((1024**int(log(new, 1024)) / 100) / self.properties["down_rate"]))
+            return 8
+        else: # Default for everything else
+            return 10
 
     def __repr__(self):
-        return "<Torrent - %s>" % self.name
+        if hasattr(self, 'name'):
+            return "<Torrent - %s - %s>" % self.infohash, self.name
+        return "<Torrent - %s>" % self.infohash
 
-    def __eq__(self, other):
-        return (self.infohash == other.infohash)
+#    def __eq__(self, other):
+#        return (self.infohash == other.infohash)
 
 class UpdateScheduler(threading.Thread):
     ''' This thread reads the joblist for the current view, 
@@ -286,16 +323,19 @@ class UpdateScheduler(threading.Thread):
     
     def run(self):
         while self.proceed:
-            joblist = self.notebook.GetCurrentPage().joblist
-            for i in joblist.keys():
+            page = self.notebook.GetCurrentPage()
+            for i in page.joblist.keys():
                 if not i:    # i == 0
-                    for job in joblist.get(i, clear=True):
+                    for job in page.joblist.get(i, clear=True):
                         self.rtorrent.put_first(job)
                     now = int(time.time())
                 elif not (now % i):
                     #print 'for job in joblist.get(i):'
-                    for job in joblist.get(i):
+                    for job in page.joblist.get(i):
                         self.rtorrent.put(job)
+            for torrent in filter(lambda t: t.dirty, page.torrents):
+                page.olv.RefreshObject(torrent)
+                torrent.dirty = False
             time.sleep(1)
 
 class LoadTorrentDialog(wx.Dialog):
