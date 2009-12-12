@@ -67,11 +67,11 @@ class XMLRPCDaemon(threading.Thread):
             return False
         except socket.gaierror, e:
             self._connected = False
-            print e
+            print "gaierror", e
             return False
         except socket.error, e:
             self._connected = False
-            print e
+            print "socket.error", e
             time.sleep(10)
             return False
 
