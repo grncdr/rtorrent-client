@@ -273,7 +273,6 @@ class Torrent(object):
         
     def callback(self, key):
         def callback(rv): 
-            #print "Setting %s to %s for %s" % (key, str(rv), str(self))
             oldvalue = self.properties[key][0]
             self.properties[key][0] = rv
             self.dirty, self.new = True, False
@@ -291,7 +290,7 @@ class Torrent(object):
             if new == 0: # No transfer happening
                 if old_frequency: # not the first time we've updated
                     # slow things down
-                    return max(MAX_REFRESH_CYCLE, int(old_frequency * 1.3))
+                    return min(MAX_REFRESH_CYCLE, int(old_frequency * 1.3))
                 else:
                     return 5
             else: # Transfer is happening, update more frequently
@@ -299,14 +298,12 @@ class Torrent(object):
         elif key == "bytes_done":
             if self.properties["down_rate"][0] > 0: # this torrent is transferring data
                 # How long we estimate it will take for a visible 0.01 increase
-                return max(1, int((1024**int(log(new, 1024)) / 100) / self.properties["down_rate"]))
+                return max(1, int((1024**int(math.log(new, 1024)) / 100) / self.properties["down_rate"][0]))
             return 8
         else: # Default for everything else
             return 10
 
     def __repr__(self):
-        if hasattr(self, 'name'):
-            return "<Torrent - %s - %s>" % self.infohash, self.name
         return "<Torrent - %s>" % self.infohash
 
 #    def __eq__(self, other):
@@ -330,12 +327,12 @@ class UpdateScheduler(threading.Thread):
                         self.rtorrent.put_first(job)
                     now = int(time.time())
                 elif not (now % i):
-                    #print 'for job in joblist.get(i):'
                     for job in page.joblist.get(i):
                         self.rtorrent.put(job)
-            for torrent in filter(lambda t: t.dirty, page.torrents):
-                page.olv.RefreshObject(torrent)
-                torrent.dirty = False
+            for torrent in page.torrents:
+                if torrent.dirty:
+                    page.olv.RefreshObject(torrent)
+                    torrent.dirty = False
             time.sleep(1)
 
 class LoadTorrentDialog(wx.Dialog):
