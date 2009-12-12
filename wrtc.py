@@ -31,6 +31,9 @@ def format_bytes(bytes):
         bytes /= 1024
     return str(round(bytes,2))+unit
 
+def format_speed(bytes):
+    return format_bytes(bytes)+"/S"
+
 def make_hash(tdata):
     ''' Create an infohash for the given torrent data '''
     from bencode import bdecode, bencode
@@ -174,9 +177,9 @@ class rTorrentView(wx.NotebookPage):
     _columns = [
         ColumnDefn("Name", valueGetter="name", isSpaceFilling=True, 
                    minimumWidth=100, maximumWidth=300),
-        ColumnDefn("Up", "right", 70, "up_rate", stringConverter=format_bytes),
+        ColumnDefn("Up", "right", 70, "up_rate", stringConverter=format_speed),
         ColumnDefn("Down", "right", 70, "down_rate", 
-                   stringConverter=format_bytes),
+                   stringConverter=format_speed),
         ColumnDefn("Size", "right", 70, "size_bytes", 
                    stringConverter=format_bytes),
         ColumnDefn("Up Total", "right", 80, "up_total", 
@@ -306,8 +309,8 @@ class Torrent(object):
     def __repr__(self):
         return "<Torrent - %s>" % self.infohash
 
-#    def __eq__(self, other):
-#        return (self.infohash == other.infohash)
+    def __eq__(self, other):
+        return (self.infohash == other.infohash)
 
 class UpdateScheduler(threading.Thread):
     ''' This thread reads the joblist for the current view, 
@@ -371,7 +374,8 @@ class LoadTorrentDialog(wx.Dialog):
         sizer.Add(self.browser, 1, TEXT, BORDER)
               
         start_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.start_immediate = wx.CheckBox(self, label="Start on load")
+        self.start_immediate = wx.CheckBox(self, label="Start on load", )
+        self.start_immediate.SetValue(True)
         start_sizer.Add(self.start_immediate, 1, wx.ALL, BORDER)
 
         buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
