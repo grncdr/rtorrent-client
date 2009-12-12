@@ -22,7 +22,7 @@ class PathBrowser(wx.TreeCtrl):
         self.SetItemText(node, self.GetItemText(node) + ' [loading...]')
         command = 'execute_capture'
         args = ['find', self.GetPyData(node)['path'], '-maxdepth','1','-type','d','-readable']
-        self.daemon.put((command, args, self._make_callback(node)))
+        self.daemon.put_first((command, args, self._make_callback(node)))
 
     def _make_callback(self, node):
         def callback(output):
@@ -36,4 +36,3 @@ class PathBrowser(wx.TreeCtrl):
                 self.SetPyData(child, {'path': dir, 'loaded': False})
             self.Expand(node)
         return callback
-
