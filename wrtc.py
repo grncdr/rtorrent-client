@@ -200,7 +200,7 @@ class rTorrentView(wx.NotebookPage):
         self.olv = ObjectListView(self, style=wx.LC_REPORT)
         self.olv.SetEmptyListMsg("No torrents")
         self.olv.SetColumns(self._columns)
-        self.joblist.put(5, ("download_list", self.title, self.set_list))
+        self.joblist.put(2, ("download_list", self.title, self.set_list))
 
     def __repr__(self):
         return "<rTorrentView '%s'>" % self.title.capitalize()
@@ -234,7 +234,6 @@ class rTorrentView(wx.NotebookPage):
         dlg.Destroy()
 
 class Torrent(object):
-    """basically a set of properties for OLV"""
     def __init__(self, view, infohash):
         self.view = view
         self.infohash  = infohash 
@@ -263,12 +262,16 @@ class Torrent(object):
     def __getitem__(self, k):
         """ We stick this in so that ObjectListView thinks it's got a normal dictionary """
         if k in self.properties:
-            if self.properties[k]:
-                return self.properties[k][0]
-            #else:
+            return self.properties[k][0]
         else:
             raise KeyError(k)
             
+    def __setitem__(self, k, v):
+        if k in self.properties:
+            self.properties[k] = v
+        else:
+            raise KeyError(k)
+
     def job(self, key):
         if not self.properties[key][1]:
             self.properties[key][1] = ("d.get_"+key, self.infohash, self.callback(key))
@@ -299,12 +302,19 @@ class Torrent(object):
             else: # Transfer is happening, update more frequently
                 return 2
         elif key == "bytes_done":
-            if self.properties["down_rate"][0] > 0: # this torrent is transferring data
+            if self["down_rate"] > 0: # this torrent is transferring data
                 # How long we estimate it will take for a visible 0.01 increase
-                return max(1, int((1024**int(math.log(new, 1024)) / 100) / self.properties["down_rate"][0]))
-            return 8
-        else: # Default for everything else
+                rate = max(1, int((1024**int(math.log(new, 1024)) / 10) / self["down_rate"]))
+                return rate
             return 10
+        elif key == "up_total":
+            if self["up_rate"] > 0: # this torrent is transferring data
+                # How long we estimate it will take for a visible 0.01 increase
+                rate = max(1, int((1024**int(math.log(new, 1024)) / 10) / self["down_rate"]))
+                return rate
+            return 10
+        # Default for everything else
+        return 10
 
     def __repr__(self):
         return "<Torrent - %s>" % self.infohash
@@ -324,13 +334,14 @@ class UpdateScheduler(threading.Thread):
     def run(self):
         while self.proceed:
             page = self.notebook.GetCurrentPage()
+            now = int(time.time())
             for i in page.joblist.keys():
                 if not i:    # i == 0
                     for job in page.joblist.get(i, clear=True):
                         self.rtorrent.put_first(job)
-                    now = int(time.time())
                 elif not (now % i):
-                    for job in page.joblist.get(i):
+                    jobs = page.joblist.get(i)
+                    for job in jobs:
                         self.rtorrent.put(job)
             for torrent in page.torrents:
                 if torrent.dirty:

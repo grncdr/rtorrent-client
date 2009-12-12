@@ -3,7 +3,6 @@ import socket
 import threading
 import xmlrpclib 
 import socket # For exception handling
-import time
 import Queue
 
 class XMLRPCDaemon(threading.Thread):
@@ -70,7 +69,6 @@ class XMLRPCDaemon(threading.Thread):
         except socket.error, e:
             self._connected = False
             print "socket.error", e
-            time.sleep(10)
             return False
 
         if callback:
