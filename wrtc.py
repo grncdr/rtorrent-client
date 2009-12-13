@@ -214,7 +214,8 @@ class rTorrentView(wx.NotebookPage):
         ''' Given a list of infohashes, add and remove torrents 
         from the torrents list as necessary '''
         self.torrents = [self.find_torrent(ih) for ih in hashlist]
-        self.olv.AddObjects(filter(lambda to: to not in self.olv.GetObjects(), self.torrents))
+        self.olv.AddObjects(filter(lambda to: to not in self.olv.GetObjects(),
+                            self.torrents))
         
     def find_torrent(self, infohash):
         for t in self.torrents:
