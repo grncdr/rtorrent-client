@@ -43,15 +43,15 @@ def make_hash(tdata):
 class wrtcApp(wx.App):
     def __init__(self, *args, **kwargs):
         def settings_save_callback(*args, **kwargs):
-            self.rtorrent.open(self.settings_manager.get("DEFAULT",'rTorrent URL'))
+            self.rtorrent.open(self.cfg.get("DEFAULT",'rTorrent URL'))
 
-        self.settings_manager = SettingsManager(APP_NAME+'.cfg', {
+        self.cfg = SettingsManager(APP_NAME+'.cfg', {
             'rtorrent url': 'http://localhost/RPC2', 
             'remote root': '/'
         }, settings_save_callback)
 
         self.rtorrent = xmlrpcdaemon.XMLRPCDaemon( # Can't shorten this one!
-            self.settings_manager.get("rTorrent URL"))
+            self.cfg.get("rTorrent URL"))
         self.rtorrent.start()
         wx.App.__init__(self, *args, **kwargs)
         self.updater = UpdateScheduler(self)
@@ -82,7 +82,7 @@ class wrtcApp(wx.App):
         self.raise_frame()
         
     def load_torrent(self,e=None,filename=None):
-        dlg = LoadTorrentDialog(self.settings_manager.get('remote root'))
+        dlg = LoadTorrentDialog(self.cfg.get('remote root'))
         if filename:
             dlg.filepath.SetValue(filename)
         if dlg.ShowModal() == wx.ID_OK:
@@ -119,7 +119,7 @@ class MainWindow(wx.Frame):
         self.file_menu.Append(wx.ID_OPEN, "Add &Torrent")
         self.Bind(wx.EVT_MENU, wx.GetApp().load_torrent, id=wx.ID_OPEN)
         self.file_menu.Append(wx.ID_PREFERENCES, "&Preferences")
-        self.Bind(wx.EVT_MENU, wx.GetApp().settings_manager.show_dialog, 
+        self.Bind(wx.EVT_MENU, wx.GetApp().cfg.show_dialog, 
                   id=wx.ID_PREFERENCES)
         self.file_menu.Append(wx.ID_EXIT, "&Quit")
         self.Bind(wx.EVT_MENU, self.on_exit, id=wx.ID_EXIT)
@@ -412,6 +412,6 @@ class LoadTorrentDialog(wx.Dialog):
 if __name__ == "__main__":
     app = wrtcApp(False)
     # Show configuration window on first run
-    if not os.path.isfile(app.settings_manager.config_path):
-        app.settings_manager.show_dialog()
+    if not os.path.isfile(app.cfg.config_path):
+        app.cfg.show_dialog()
     app.MainLoop()
