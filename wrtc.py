@@ -268,7 +268,7 @@ class Torrent(object):
             
     def __setitem__(self, k, v):
         if k in self.properties:
-            self.properties[k] = v
+            self.properties[k][0] = v
         else:
             raise KeyError(k)
 
