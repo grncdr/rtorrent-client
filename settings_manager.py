@@ -17,9 +17,9 @@ class SettingsManager():
 
     def get_config_path(self):
         if os.name == 'nt':
-            return os.path.expanduser("~/AppData/Local/%s" % self.filename)
+            return os.path.expanduser("~/AppData/Local/")
         else:
-            return os.path.expanduser("~/.config/%s" % self.filename)
+            return os.path.expanduser("~/.config/")
 
     def show_dialog(self, evt=None):
         self.dlg = wx.Dialog(None, title="Settings")
@@ -45,7 +45,9 @@ class SettingsManager():
     def save(self, evt):
         for setting, control in self.controls:
             self.cfg.set("DEFAULT", setting, str(control.GetValue()))
-        with open(self.config_path,'wb') as fh:
+        if not os.path.isdir(self.config_path):
+            os.makedirs(self.config_path)
+        with open(self.config_path+self.filename,'wb') as fh:
             self.cfg.write(fh)
         if self.save_callback():
             self.save_callback()
