@@ -1,74 +1,166 @@
-CallbackEventCatcher	callbackeventcatcher.py	/^class CallbackEventCatcher(/
-FormatBytes	rtorrent_client.py	/^def FormatBytes(/
-HandleEvent	callbackeventcatcher.py	/^    def HandleEvent(/
-InitQueues	rtorrent_client.py	/^def InitQueues(/
-IsVisible	controls.py	/^    def IsVisible(/
-LoadTorrentDialog	rtorrent_client.py	/^class LoadTorrentDialog(/
-MainWindow	rtorrent_client.py	/^class MainWindow(/
-MultiQueue	multiqueue.py	/^class MultiQueue:/
-OnBrowse	rtorrent_client.py	/^    def OnBrowse(/
-OnClick	controls.py	/^    def OnClick(/
-OnExit	rtorrent_client.py	/^    def OnExit(/
-OnPageChange	rtorrent_client.py	/^    def OnPageChange(/
-OnScroll	rtorrent_client.py	/^    def OnScroll(/
-RTDaemon	rtdaemon.py	/^class RTDaemon(/
-RemoteLabel	controls.py	/^class RemoteLabel(/
-RemoteProgressBar	controls.py	/^class RemoteProgressBar(/
-RemoteUpdate	controls.py	/^class RemoteUpdate:/
-SaveSettings	rtorrent_client.py	/^    def SaveSettings(/
-SetBitmap	controls.py	/^    def SetBitmap(/
-SetLabel	controls.py	/^    def SetLabel(/
-SetValue	controls.py	/^    def SetValue(/
-SettingsManager	rtorrent_client.py	/^class SettingsManager(/
-SettingsPanel	rtorrent_client.py	/^class SettingsPanel(/
-StateButton	controls.py	/^class StateButton(/
-TorrentPanel	rtorrent_client.py	/^class TorrentPanel(/
-TorrentsNotebook	rtorrent_client.py	/^class TorrentsNotebook(/
-UpdateScheduler	rtorrent_client.py	/^class UpdateScheduler(/
-ViewPanel	rtorrent_client.py	/^class ViewPanel(/
-__contains__	multiqueue.py	/^    def __contains__(/
-__init__	callbackeventcatcher.py	/^    def __init__(/
-__init__	controls.py	/^    def __init__(/
-__init__	controls.py	/^    def __init__(/
-__init__	controls.py	/^    def __init__(/
-__init__	controls.py	/^    def __init__(/
-__init__	multiqueue.py	/^    def __init__(/
-__init__	rtdaemon.py	/^    def __init__(/
-__init__	rtorrent_client.py	/^    def __init__(/
-__init__	rtorrent_client.py	/^    def __init__(/
-__init__	rtorrent_client.py	/^    def __init__(/
-__init__	rtorrent_client.py	/^    def __init__(/
-__init__	rtorrent_client.py	/^    def __init__(/
-__init__	rtorrent_client.py	/^    def __init__(/
-__init__	rtorrent_client.py	/^    def __init__(/
-__init__	rtorrent_client.py	/^    def __init__(/
-__len__	multiqueue.py	/^    def __len__(/
-add_to_view	rtorrent_client.py	/^    def add_to_view(/
-callbackeventcatcher	callbackeventcatcher.py	1
-changecount	multiqueue.py	/^    def changecount(/
-controls	controls.py	1
-dec	multiqueue.py	/^    def dec(/
-get_default_config_path	rtorrent_client.py	/^    def get_default_config_path(/
-inc	multiqueue.py	/^    def inc(/
-is_complete	rtorrent_client.py	/^    def is_complete(/
-load_torrent	rtorrent_client.py	/^def load_torrent(/
-load_views	rtorrent_client.py	/^    def load_views(/
-multiqueue	multiqueue.py	1
-on_erase	rtorrent_client.py	/^    def on_erase(/
-remote_request	rtdaemon.py	/^    def remote_request(/
-remove_from_view	rtorrent_client.py	/^    def remove_from_view(/
-rtdaemon	rtdaemon.py	1
-rtorrent_client	rtorrent_client.py	1
-run	rtdaemon.py	/^    def run(/
-run	rtorrent_client.py	/^    def run(/
-save	rtorrent_client.py	/^    def save(/
-send_file	rtdaemon.py	/^    def send_file(/
-send_url	rtdaemon.py	/^    def send_url(/
-start_torrent	rtorrent_client.py	/^    def start_torrent(/
-stop_torrent	rtorrent_client.py	/^    def stop_torrent(/
-synchronize	rtorrent_client.py	/^    def synchronize(/
-update	rtorrent_client.py	/^    def update(/
-update_list	rtorrent_client.py	/^    def update_list(/
-update_self	controls.py	/^    def update_self(/
-update_visible	rtorrent_client.py	/^    def update_visible(/
-update_visible	rtorrent_client.py	/^    def update_visible(/
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.8	//
+APP	setup.py	/^APP = ['wrtc.py']$/;"	v
+APP_NAME	wrtc.py	/^APP_NAME = 'wrTc'$/;"	v
+BTFailure	BTL.py	/^class BTFailure(Exception):$/;"	c
+BTFailure	bencode.py	/^from BTL import BTFailure$/;"	i
+Bencached	bencode.py	/^class Bencached(object):$/;"	c
+Binary	wrtc.py	/^from xmlrpclib import Binary$/;"	i
+BooleanType	bencode.py	/^    from types import BooleanType$/;"	i
+ColumnDefn	wrtc.py	/^from ObjectListView import ObjectListView, ColumnDefn$/;"	i
+ConfigParser	settings_manager.py	/^from ConfigParser import ConfigParser$/;"	i
+DATA_FILES	setup.py	/^DATA_FILES = []$/;"	v
+DictType	bencode.py	/^from types import StringType, IntType, LongType, DictType, ListType, TupleType$/;"	i
+For	xmlrpcdaemon.py	/^import socket # For exception handling$/;"	i
+IntType	bencode.py	/^from types import StringType, IntType, LongType, DictType, ListType, TupleType$/;"	i
+ListType	bencode.py	/^from types import StringType, IntType, LongType, DictType, ListType, TupleType$/;"	i
+LoadTorrentDialog	wrtc.py	/^class LoadTorrentDialog(wx.Dialog):$/;"	c
+LongType	bencode.py	/^from types import StringType, IntType, LongType, DictType, ListType, TupleType$/;"	i
+MAX_REFRESH_CYCLE	wrtc.py	/^MAX_REFRESH_CYCLE = 30$/;"	v
+MacOpenFile	wrtc.py	/^    def MacOpenFile(self, filename):$/;"	m	class:wrtcApp
+MacReopenApp	wrtc.py	/^    def MacReopenApp(self, *args, **kwargs):$/;"	m	class:wrtcApp
+MainWindow	wrtc.py	/^class MainWindow(wx.Frame):$/;"	c
+MultiQueue	multiqueue.py	/^class MultiQueue(object):$/;"	c
+MultiQueue	wrtc.py	/^from multiqueue import MultiQueue$/;"	i
+OPTIONS	setup.py	/^OPTIONS = {'argv_emulation': True}$/;"	v
+ObjectListView	wrtc.py	/^from ObjectListView import ObjectListView, ColumnDefn$/;"	i
+OnInit	wrtc.py	/^    def OnInit(self):$/;"	m	class:wrtcApp
+PathBrowser	browser.py	/^class PathBrowser(wx.TreeCtrl):$/;"	c
+PathBrowser	wrtc.py	/^        from browser import PathBrowser$/;"	i
+Queue	xmlrpcdaemon.py	/^import Queue$/;"	i
+SettingsManager	settings_manager.py	/^class SettingsManager():$/;"	c
+SettingsManager	wrtc.py	/^from settings_manager import SettingsManager$/;"	i
+StringType	bencode.py	/^from types import StringType, IntType, LongType, DictType, ListType, TupleType$/;"	i
+Torrent	wrtc.py	/^class Torrent(object):$/;"	c
+TupleType	bencode.py	/^from types import StringType, IntType, LongType, DictType, ListType, TupleType$/;"	i
+UpdateScheduler	wrtc.py	/^class UpdateScheduler(threading.Thread):$/;"	c
+VIEW_LIST	wrtc.py	/^VIEW_LIST = ["incomplete", "seeding", "stopped"]$/;"	v
+WRTC_OSX	wrtc.py	/^WRTC_OSX = hasattr(os, 'uname') and (os.uname()[0] == 'Darwin')$/;"	v
+XMLRPCDaemon	xmlrpcdaemon.py	/^class XMLRPCDaemon(threading.Thread):$/;"	c
+__eq__	wrtc.py	/^    def __eq__(self, other):$/;"	m	class:Torrent	file:
+__getitem__	multiqueue.py	/^    def __getitem__(self, i):$/;"	m	class:MultiQueue	file:
+__getitem__	wrtc.py	/^    def __getitem__(self, k):$/;"	m	class:Torrent	file:
+__init__	bencode.py	/^    def __init__(self, s):$/;"	m	class:Bencached
+__init__	browser.py	/^    def __init__(self, parent, remote_root):$/;"	m	class:PathBrowser
+__init__	multiqueue.py	/^    def __init__(self):$/;"	m	class:MultiQueue
+__init__	settings_manager.py	/^    def __init__(self, filename, defaults={}, save_callback=None):$/;"	m	class:SettingsManager
+__init__	wrtc.py	/^    def __init__(self, *args, **kwargs):$/;"	m	class:wrtcApp
+__init__	wrtc.py	/^    def __init__(self, app):$/;"	m	class:UpdateScheduler
+__init__	wrtc.py	/^    def __init__(self, parent, id, title):$/;"	m	class:MainWindow
+__init__	wrtc.py	/^    def __init__(self, parent, title="default"):$/;"	m	class:rTorrentView
+__init__	wrtc.py	/^    def __init__(self, parent, views, *args, **kwargs):$/;"	m	class:rTorrentNotebook
+__init__	wrtc.py	/^    def __init__(self, remote_root):$/;"	m	class:LoadTorrentDialog
+__init__	wrtc.py	/^    def __init__(self, view, infohash):$/;"	m	class:Torrent
+__init__	xmlrpcdaemon.py	/^    def __init__(self, url):$/;"	m	class:XMLRPCDaemon
+__len__	multiqueue.py	/^    def __len__(self):$/;"	m	class:MultiQueue	file:
+__repr__	multiqueue.py	/^    def __repr__(self):$/;"	m	class:MultiQueue	file:
+__repr__	wrtc.py	/^    def __repr__(self):$/;"	m	class:Torrent	file:
+__repr__	wrtc.py	/^    def __repr__(self):$/;"	m	class:rTorrentView	file:
+__setitem__	wrtc.py	/^    def __setitem__(self, k, v):$/;"	m	class:Torrent	file:
+__slots__	bencode.py	/^    __slots__ = ['bencoded']$/;"	v	class:Bencached
+_columns	wrtc.py	/^    _columns = [$/;"	v	class:rTorrentView
+_load_children	browser.py	/^    def _load_children(self, node):$/;"	m	class:PathBrowser
+_load_root	browser.py	/^    def _load_root(self):$/;"	m	class:PathBrowser
+_make_callback	browser.py	/^    def _make_callback(self, node):$/;"	m	class:PathBrowser
+_on_expand	browser.py	/^    def _on_expand(self, evt):$/;"	m	class:PathBrowser
+_remote_request	xmlrpcdaemon.py	/^    def _remote_request(self,job):$/;"	m	class:XMLRPCDaemon
+_set_connected	xmlrpcdaemon.py	/^    def _set_connected(self, version):$/;"	m	class:XMLRPCDaemon
+activate	wrtc.py	/^    def activate(self, evt):$/;"	m	class:wrtcApp
+app	setup.py	/^        app=APP,$/;"	v
+app	wrtc.py	/^    app = wrtcApp(False)$/;"	v	class:LoadTorrentDialog
+bdecode	bencode.py	/^def bdecode(x):$/;"	f
+bdecode	wrtc.py	/^    from bencode import bdecode, bencode$/;"	i
+bencode	bencode.py	/^def bencode(x):$/;"	f
+bencode	wrtc.py	/^    from bencode import bdecode, bencode$/;"	i
+callback	browser.py	/^        def callback(output):$/;"	f	function:PathBrowser._make_callback
+callback	wrtc.py	/^        def callback(rv): $/;"	f	function:Torrent.callback
+callback	wrtc.py	/^    def callback(self, key):$/;"	m	class:Torrent
+clear	multiqueue.py	/^    def clear(self):$/;"	m	class:MultiQueue
+clear	xmlrpcdaemon.py	/^    def clear(self):$/;"	m	class:XMLRPCDaemon
+data_files	setup.py	/^        data_files=DATA_FILES,$/;"	v
+decode_dict	bencode.py	/^def decode_dict(x, f):$/;"	f
+decode_func	bencode.py	/^decode_func = {}$/;"	v
+decode_int	bencode.py	/^def decode_int(x, f):$/;"	f
+decode_list	bencode.py	/^def decode_list(x, f):$/;"	f
+decode_string	bencode.py	/^def decode_string(x, f):$/;"	f
+dest_callback	wrtc.py	/^        def dest_callback(rv):$/;"	f	function:wrtcApp.send_torrent
+encode_bencached	bencode.py	/^def encode_bencached(x,r):$/;"	f
+encode_bool	bencode.py	/^def encode_bool(x, r):$/;"	f
+encode_dict	bencode.py	/^def encode_dict(x,r):$/;"	f
+encode_func	bencode.py	/^encode_func = {}$/;"	v
+encode_int	bencode.py	/^def encode_int(x, r):$/;"	f
+encode_list	bencode.py	/^def encode_list(x, r):$/;"	f
+encode_string	bencode.py	/^def encode_string(x, r):$/;"	f
+exception	xmlrpcdaemon.py	/^import socket # For exception handling$/;"	i
+find_torrent	wrtc.py	/^    def find_torrent(self, infohash):$/;"	m	class:rTorrentView
+format_bytes	wrtc.py	/^def format_bytes(bytes):$/;"	f
+format_speed	wrtc.py	/^def format_speed(bytes):$/;"	f
+get	multiqueue.py	/^    def get(self, i, clear=False):$/;"	m	class:MultiQueue
+get	settings_manager.py	/^    def get(self, *args):$/;"	m	class:SettingsManager
+get_config_path	settings_manager.py	/^    def get_config_path(self):$/;"	m	class:SettingsManager
+get_list	wrtc.py	/^    def get_list(self):$/;"	m	class:rTorrentView
+handling	xmlrpcdaemon.py	/^import socket # For exception handling$/;"	i
+job	wrtc.py	/^    def job(self, key):$/;"	m	class:Torrent
+keys	multiqueue.py	/^    def keys(self):$/;"	m	class:MultiQueue
+load_torrent	wrtc.py	/^    def load_torrent(self,e=None,filename=None):$/;"	m	class:wrtcApp
+load_views	wrtc.py	/^    def load_views(self, views):$/;"	m	class:rTorrentNotebook
+make_hash	wrtc.py	/^def make_hash(tdata):$/;"	f
+math	wrtc.py	/^import os, sys, threading, wx, time, math$/;"	i
+move	multiqueue.py	/^    def move(self, job, new_f):$/;"	m	class:MultiQueue
+new_frequency	wrtc.py	/^    def new_frequency(self, key, new, old):$/;"	m	class:Torrent
+on_about_request	wrtc.py	/^    def on_about_request(self, evt):$/;"	m	class:MainWindow
+on_browse	wrtc.py	/^    def on_browse(self,e):$/;"	m	class:LoadTorrentDialog
+on_erase	wrtc.py	/^    def on_erase(self, e):$/;"	m	class:rTorrentView
+on_exit	wrtc.py	/^    def on_exit(self,e):$/;"	m	class:MainWindow
+open	xmlrpcdaemon.py	/^    def open(self, url):$/;"	m	class:XMLRPCDaemon
+options	setup.py	/^        options={'py2app': OPTIONS},$/;"	v
+os	settings_manager.py	/^import os, wx$/;"	i
+os	setup.py	/^import os$/;"	i
+os	wrtc.py	/^import os, sys, threading, wx, time, math$/;"	i
+page_changed	wrtc.py	/^    def page_changed(self, evt):$/;"	m	class:rTorrentNotebook
+plist	setup.py	/^    plist = {$/;"	v
+put	multiqueue.py	/^    def put(self, i, job):$/;"	m	class:MultiQueue
+put	xmlrpcdaemon.py	/^    def put(self, job):$/;"	m	class:XMLRPCDaemon
+put_first	xmlrpcdaemon.py	/^    def put_first(self, job):$/;"	m	class:XMLRPCDaemon
+py2exe	setup.py	/^    import py2exe$/;"	i
+rTorrentNotebook	wrtc.py	/^class rTorrentNotebook(wx.Notebook):$/;"	c
+rTorrentView	wrtc.py	/^class rTorrentView(wx.NotebookPage):$/;"	c
+raise_frame	wrtc.py	/^    def raise_frame(self):$/;"	m	class:wrtcApp
+remove	multiqueue.py	/^    def remove(self, test):$/;"	m	class:MultiQueue
+run	wrtc.py	/^    def run(self):$/;"	m	class:UpdateScheduler
+run	xmlrpcdaemon.py	/^    def run(self):$/;"	m	class:XMLRPCDaemon
+save	settings_manager.py	/^    def save(self, evt):$/;"	m	class:SettingsManager
+send_torrent	wrtc.py	/^    def send_torrent(self, dlg):$/;"	m	class:wrtcApp
+set_list	wrtc.py	/^    def set_list(self, hashlist):$/;"	m	class:rTorrentView
+settings_save_callback	wrtc.py	/^        def settings_save_callback(*args, **kwargs):$/;"	f	function:wrtcApp.__init__
+setup	setup.py	/^    from distutils.core import setup$/;"	i
+setup	setup.py	/^    from setuptools import setup$/;"	i
+setup_requires	setup.py	/^        setup_requires=['py2app']$/;"	v
+sha1	wrtc.py	/^    from hashlib import sha1$/;"	i
+show_dialog	settings_manager.py	/^    def show_dialog(self, evt=None):$/;"	m	class:SettingsManager
+socket	xmlrpcdaemon.py	/^import socket # For exception handling$/;"	i
+socket	xmlrpcdaemon.py	/^import socket$/;"	i
+start_callback	wrtc.py	/^            def start_callback(rv):$/;"	f	function:wrtcApp.send_torrent.dest_callback
+stringConverter	wrtc.py	/^                   stringConverter="%s%%"),$/;"	v	class:rTorrentView
+stringConverter	wrtc.py	/^                   stringConverter=format_bytes),$/;"	v	class:rTorrentView
+stringConverter	wrtc.py	/^                   stringConverter=format_speed),$/;"	v	class:rTorrentView
+sys	wrtc.py	/^import os, sys, threading, wx, time, math$/;"	i
+threading	multiqueue.py	/^import threading$/;"	i
+threading	wrtc.py	/^import os, sys, threading, wx, time, math$/;"	i
+threading	xmlrpcdaemon.py	/^import threading$/;"	i
+time	wrtc.py	/^import os, sys, threading, wx, time, math$/;"	i
+urllib2	wrtc.py	/^            import urllib2$/;"	i
+with_statement	multiqueue.py	/^from __future__ import with_statement$/;"	i
+with_statement	settings_manager.py	/^from __future__ import with_statement$/;"	i
+with_statement	wrtc.py	/^from __future__ import with_statement$/;"	i
+with_statement	xmlrpcdaemon.py	/^from __future__ import with_statement$/;"	i
+wrtcApp	wrtc.py	/^class wrtcApp(wx.App):$/;"	c
+wx	browser.py	/^import wx$/;"	i
+wx	settings_manager.py	/^import os, wx$/;"	i
+wx	wrtc.py	/^import os, sys, threading, wx, time, math$/;"	i
+xmlrpcdaemon	wrtc.py	/^import xmlrpcdaemon $/;"	i
+xmlrpclib	xmlrpcdaemon.py	/^import xmlrpclib $/;"	i
