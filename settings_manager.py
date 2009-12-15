@@ -2,7 +2,9 @@ from __future__ import with_statement
 from ConfigParser import ConfigParser
 import os, wx
 class SettingsManager():
-    ''' Wraps a ConfigParser and shows a nice little dialog  '''
+    ''' Intended to be used with a single configuration file, this class wraps a
+    ConfigParser and displays a dialog using wxPython to edit the settings
+    contained therein '''
     def __init__(self, filename, defaults={}, save_callback=None):
         self.cfg = ConfigParser(defaults)
         self.file = self.get_base_config_path()+filename
