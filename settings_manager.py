@@ -5,9 +5,8 @@ class SettingsManager():
     ''' Wraps a ConfigParser and shows a nice little dialog  '''
     def __init__(self, filename, defaults={}, save_callback=None):
         self.cfg = ConfigParser(defaults)
-        self.filename = filename
-        self.config_path = self.get_config_path()
-        self.cfg.read(self.config_path)
+        self.file = self.get_base_config_path()+filename
+        self.file_exists = bool(self.cfg.read(self.file))
         self.save_callback = save_callback
 
     def get(self, *args):
@@ -15,7 +14,7 @@ class SettingsManager():
         if len(args) > 1: return self.cfg.get(*args)
         return self.cfg.get("DEFAULT", args[0])
 
-    def get_config_path(self):
+    def get_base_config_path(self):
         if os.name == 'nt':
             return os.path.expanduser("~/AppData/Local/")
         else:
@@ -45,9 +44,10 @@ class SettingsManager():
     def save(self, evt):
         for setting, control in self.controls:
             self.cfg.set("DEFAULT", setting, str(control.GetValue()))
-        if not os.path.isdir(self.config_path):
-            os.makedirs(self.config_path)
-        with open(self.config_path+self.filename,'wb') as fh:
+        config_path = os.path.dirname(self.file)
+        if not os.path.isdir(config_path):
+            os.makedirs(config_path)
+        with open(self.file,'wb') as fh:
             self.cfg.write(fh)
         if self.save_callback():
             self.save_callback()
