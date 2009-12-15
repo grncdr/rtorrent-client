@@ -1,7 +1,8 @@
 import wx
 class PathBrowser(wx.TreeCtrl):
     def __init__(self, parent, remote_root):
-        wx.TreeCtrl.__init__(self, parent, size=(-1,200))
+        wx.TreeCtrl.__init__(self, parent, size=(-1,200),
+                             style=wx.TR_HIDE_ROOT|wx.TR_HAS_BUTTONS)
         self.daemon = wx.GetApp().rtorrent
         self.remote_root = remote_root
         self.Bind(wx.EVT_TREE_ITEM_EXPANDING, self._on_expand)
@@ -14,7 +15,7 @@ class PathBrowser(wx.TreeCtrl):
         evt.Skip()
 
     def _load_root(self):
-        self.root_node = self.AddRoot('Root')
+        self.root_node = self.AddRoot('Remote Root')
         self.SetPyData(self.root_node, {'path': self.remote_root, 'loaded': False})
         self._load_children(self.root_node)
 
@@ -28,11 +29,12 @@ class PathBrowser(wx.TreeCtrl):
         def callback(output):
             data = self.GetPyData(node)
             data['loaded'] = True
-            self.SetItemText(node, self.GetItemText(node).replace(' [loading...]',''))
             self.SetPyData(node, data)
             for dir in output.split('\n')[1:-1]:
                 child = self.AppendItem(node, dir.replace(data['path'],'').replace('/',''))
                 self.SetItemHasChildren(child, True)
                 self.SetPyData(child, {'path': dir, 'loaded': False})
-            self.Expand(node)
+            if node != self.root_node:
+                self.Expand(node)
+            self.SetItemText(node, self.GetItemText(node).replace(' [loading...]',''))
         return callback
