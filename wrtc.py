@@ -216,6 +216,8 @@ class rTorrentView(wx.NotebookPage):
         self.torrents = [self.find_torrent(ih) for ih in hashlist]
         self.olv.AddObjects(filter(lambda to: to not in self.olv.GetObjects(),
                             self.torrents))
+        self.olv.RemoveObjects(filter(lambda to: to not in self.torrents,
+                               self.olv.GetObjects()))
         
     def find_torrent(self, infohash):
         for t in self.torrents:
@@ -412,6 +414,6 @@ class LoadTorrentDialog(wx.Dialog):
 if __name__ == "__main__":
     app = wrtcApp(False)
     # Show configuration window on first run
-    if not os.path.isfile(app.cfg.config_path):
+    if not app.cfg.file_exists:
         app.cfg.show_dialog()
     app.MainLoop()
