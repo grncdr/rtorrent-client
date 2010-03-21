@@ -12,6 +12,7 @@ class SettingsManager():
         self.save_callback = save_callback
 
     def get(self, *args):
+        ''' get(self, [section,] setting) '''
         if not args: return None
         if len(args) > 1: return self.cfg.get(*args)
         return self.cfg.get("DEFAULT", args[0])
